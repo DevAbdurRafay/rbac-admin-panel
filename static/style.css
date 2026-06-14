@@ -843,43 +843,73 @@ table.audit-table { width:100%; border-collapse:collapse; white-space:nowrap; }
 .toast.err    { background:rgba(26,6,6,0.95);   border-color:rgba(255,82,82,0.4);  color:var(--red); }
 .toast.info   { background:rgba(6,24,40,0.95);  border-color:rgba(79,195,247,0.4); color:var(--blue); }
  
- 
-/* ══════════════════════════════════════════════════════════
+ /* ══════════════════════════════════════════════════════════
    RESPONSIVE BREAKPOINTS
    ══════════════════════════════════════════════════════════ */
- 
+
 /* ── Large tablets & small laptops (≤1100px) ─────────────────────── */
 @media (max-width:1100px) {
   .topbar-sub { display:none; }
   .topbar-sep { display:none; }
 }
- 
+
 /* ── Tablets (≤900px) ─────────────────────────────────────────────── */
 @media (max-width:900px) {
-  :root { --topbar-h:52px; }
- 
-  /* Stats: 2 columns */
-  .stats-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
- 
-  /* Users: stack */
-  .users-grid { grid-template-columns:1fr; }
- 
-  /* Topbar: hide desktop tabs + sep + sub, show hamburger */
-  .topbar-tabs     { display:none !important; }
+  :root { --topbar-h:auto; }
+
+  /* Topbar: two rows */
+  .topbar {
+    flex-wrap:wrap;
+    height:auto;
+    padding:8px 16px 6px;
+    gap:6px;
+  }
+
+  /* Row 1: brand + right actions */
+  .topbar-brand { order:1; }
+  .topbar-right { order:2; margin-left:auto; }
+
+  /* Row 2: tabs full width */
+  .topbar-tabs {
+    display:flex !important;
+    order:3;
+    width:100%;
+    gap:4px;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    padding-bottom:2px;
+    margin-left:0;
+  }
+  .topbar-tabs::-webkit-scrollbar { display:none; }
+
+  .tab-btn {
+    flex-shrink:0;
+    font-size:12px;
+    padding:6px 12px;
+    white-space:nowrap;
+  }
+
+  /* Hide these — tabs replace them */
   .topbar-sub      { display:none !important; }
   .topbar-sep      { display:none !important; }
   .topbar-user     { display:none !important; }
-  .mobile-menu-btn { display:flex !important; align-items:center; justify-content:center; }
- 
-  /* topbar-right: keep visible, just compact */
+  .mobile-menu-btn { display:none !important; }
+
+  /* Stats: 2 columns */
+  .stats-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+
+  /* Users: stack */
+  .users-grid { grid-template-columns:1fr; }
+
+  /* topbar-right: compact */
   .topbar-right { gap:6px; }
-  /* Hide refresh/logout text labels on very small, keep icons */
   .topbar-right .btn-sm { padding:5px 10px; font-size:11px; }
- 
+
   /* Dept table: hide distribution column on tablet */
   .dept-table th:nth-child(3),
   .dept-table td:nth-child(3) { display:none; }
- 
+
   /* Privilege matrix scroll hint */
   .priv-wrap::after {
     content:'← Scroll to see all permissions →';
@@ -889,33 +919,58 @@ table.audit-table { width:100%; border-collapse:collapse; white-space:nowrap; }
     border-top:1px solid var(--border);
     font-family:'JetBrains Mono',monospace;
   }
- 
-  /* User row: allow wrap */
+
   .user-row { flex-wrap:wrap; }
- 
-  /* SQL quick buttons: smaller */
   .quick-btn { font-size:9px; padding:3px 8px; }
 }
- 
+
 /* ── Mobile (≤640px) ──────────────────────────────────────────────── */
 @media (max-width:640px) {
-  :root { --topbar-h:48px; }
- 
+  :root { --topbar-h:auto; }
+
   .main { padding:10px; }
- 
-  /* Stats: 2 columns smaller */
+
+  /* Topbar */
+  .topbar {
+    flex-wrap:wrap;
+    height:auto;
+    padding:6px 10px 4px;
+    gap:6px;
+  }
+  .topbar-brand { order:1; font-size:12px; }
+  .topbar-right { order:2; margin-left:auto; gap:4px; }
+
+  /* Tabs row */
+  .topbar-tabs {
+    display:flex !important;
+    order:3;
+    width:100%;
+    gap:4px;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    padding-bottom:2px;
+    margin-left:0;
+  }
+  .topbar-tabs::-webkit-scrollbar { display:none; }
+
+  .tab-btn {
+    flex-shrink:0;
+    font-size:11px;
+    padding:5px 10px;
+    white-space:nowrap;
+  }
+
+  .mobile-menu-btn { display:none !important; }
+  .topbar-user     { display:none !important; }
+
+  .topbar-right .btn-sm { padding:4px 8px; font-size:10px; }
+
+  /* Stats */
   .stats-grid { grid-template-columns:repeat(2,1fr); gap:8px; }
   .stat-val   { font-size:22px; }
   .stat-label { font-size:9px; }
- 
-  /* Topbar compact */
-  .topbar { padding:0 10px; gap:6px; }
-  .topbar-brand { font-size:12px; }
-  .topbar-right { gap:4px; flex-shrink:0; }
-  /* Keep Refresh + Logout always visible — just smaller */
-  .topbar-right .btn-sm { padding:4px 8px; font-size:10px; }
-  .mobile-menu-btn { font-size:20px; padding:4px 6px; }
- 
+
   /* SQL editor top: stack user buttons */
   .sql-editor-top { padding:8px 10px; gap:6px; }
   .sql-user-label { width:100%; }
@@ -923,80 +978,71 @@ table.audit-table { width:100%; border-collapse:collapse; white-space:nowrap; }
   .sql-run-main   { width:100%; }
   .sql-run-main .btn { width:100%; text-align:center; padding:8px; }
   .user-run-btn { font-size:10px; padding:4px 8px; }
- 
+
   /* Quick buttons */
   .sql-quick-btns { padding:6px 10px; gap:4px; }
   .quick-btn { font-size:9px; padding:2px 7px; }
   .quick-sep { display:none; }
- 
-  /* SQL textarea smaller */
+
   .sql-textarea { min-height:80px; font-size:12px; padding:10px 12px; }
- 
-  /* Section header: stack */
+
   .section-hdr { flex-direction:column; align-items:flex-start; gap:8px; }
   .current-user-badge { font-size:10px; }
- 
-  /* Dept table: show only name + count */
+
   .dept-table th:nth-child(3),
   .dept-table td:nth-child(3),
   .dept-table th:nth-child(4),
   .dept-table td:nth-child(4) { display:none; }
- 
   .dept-table th,
   .dept-table td { padding:10px 12px; font-size:12px; }
- 
-  /* Privilege matrix: smaller toggles */
+
   .toggle { width:32px; height:18px; }
   .toggle-thumb { width:12px; height:12px; top:2px; left:2px; }
   .toggle input:checked ~ .toggle-thumb { transform:translateX(14px); }
   .priv-table td { padding:8px 8px; }
   .priv-table th { padding:7px 8px; }
   .role-badge { font-size:8px; padding:2px 6px; }
- 
-  /* Users */
+
   .create-form { padding:12px; }
   .users-card-header { padding:10px 12px; }
   .users-list { padding:8px; }
   .user-row { padding:8px 10px; gap:8px; }
- 
-  /* Audit table: hide some columns */
+
   .audit-table th:nth-child(1),
   .audit-table td:nth-child(1) { display:none; }
- 
-  /* Modal full-width */
+
   .modal-box { border-radius:12px; }
- 
-  /* Toast full-width */
+
   .toast-container { right:12px; left:12px; max-width:100%; }
   .toast { max-width:100%; font-size:11px; }
- 
-  /* SQL log: single line */
+
   .sql-log { padding:7px 12px; gap:8px; }
   .sql-log-label { font-size:9px; }
   .sql-log-text  { font-size:11px; }
 }
- 
+
 /* ── Very small phones (≤380px) ────────────────────────────────────── */
 @media (max-width:380px) {
   .stats-grid { grid-template-columns:1fr 1fr; gap:6px; }
   .stat-card  { padding:12px; }
   .stat-val   { font-size:20px; }
- 
-  .topbar-brand { font-size:12px; gap:6px; }
+
+  .topbar-brand { font-size:11px; gap:6px; }
   .live-dot { width:6px; height:6px; }
- 
+
+  .tab-btn { font-size:10px; padding:4px 8px; }
+
   .btn-sm { padding:3px 6px; font-size:10px; }
- 
+
   .main { padding:8px; }
- 
+
   .dept-table th:nth-child(2),
   .dept-table td:nth-child(2) { display:none; }
 }
- 
+
 /* ── Touch device optimizations ────────────────────────────────────── */
 @media (hover:none) and (pointer:coarse) {
-  /* Bigger tap targets */
-  .tab-btn    { padding:8px 16px; }
+  .tab-btn    { padding:7px 14px; }
   .quick-btn  { padding:5px 12px; }
   .toggle     { width:44px; height:24px; }
   .toggle-thumb { width:18px; height:18px; }
@@ -1004,12 +1050,11 @@ table.audit-table { width:100%; border-collapse:collapse; white-space:nowrap; }
   .btn        { padding:8px 16px; }
   .btn-sm     { padding:6px 12px; }
   .user-run-btn { padding:7px 14px; }
- 
-  /* Remove hover transform (flickers on touch) */
+
   .stat-card:hover  { transform:none; }
   .btn-login:hover  { transform:none; }
 }
- 
+
 /* ── Print ──────────────────────────────────────────────────────────── */
 @media print {
   #matrix-bg, body::after, .topbar, .toast-container,
@@ -1017,7 +1062,7 @@ table.audit-table { width:100%; border-collapse:collapse; white-space:nowrap; }
   .tab-panel { display:block !important; }
   body { background:white; color:black; }
 }
- 
+
 /* ── Accessibility: reduced motion ─────────────────────────────────── */
 @media (prefers-reduced-motion:reduce) {
   *, *::before, *::after {
