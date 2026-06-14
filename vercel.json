@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "admin_panel.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "admin_panel.py"
+    }
+  ]
+}
