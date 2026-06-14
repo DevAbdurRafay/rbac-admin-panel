@@ -288,7 +288,10 @@ SELECT * FROM employees LIMIT 10;"
 <div class="toast-container" id="toasts"></div>
 
 <script>
-const API = 'http://localhost:8000';
+// Auto-detect: Vercel (same origin) vs local dev (localhost:8000)
+const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:8000'
+  : '';  // Same origin on Vercel — FastAPI serves from same domain
 const CORRECT_ADMIN_PASSWORD = 'rafaysupadb2026';
 
 const TABLES = ['employees','departments','salary_records'];
