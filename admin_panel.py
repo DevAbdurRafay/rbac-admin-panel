@@ -16,7 +16,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ── DB helpers ──────────────────────────────────────────────────────
 def _clean_url(url: str) -> str:
     return re.sub(r'^postgresql\+[^:]+://', 'postgresql://', url)
 
@@ -52,7 +51,6 @@ def user_conn(username: str, password: str):
     dsn["password"] = password
     return psycopg2.connect(**dsn)
 
-# ── Models ──────────────────────────────────────────────────────────
 class ToggleReq(BaseModel):
     role: str; table: str; priv: str; action: str; admin_password: str
 
@@ -79,7 +77,6 @@ class VerifyReq(BaseModel):
     username: str
     password: str
 
-# ── Serve HTML ──────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 def root():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "admin.html")
@@ -87,7 +84,6 @@ def root():
         return HTMLResponse(open(path, encoding="utf-8").read())
     return HTMLResponse("<h2>admin.html not found in templates/ folder</h2>", status_code=404)
 
-# ── Health ──────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
     try:
@@ -96,7 +92,6 @@ def health():
     except Exception as e:
         raise HTTPException(503, str(e))
 
-# ── Stats ───────────────────────────────────────────────────────────
 @app.get("/api/stats")
 def stats():
     conn = admin_conn(); cur = conn.cursor()
@@ -115,7 +110,6 @@ def stats():
     finally:
         cur.close(); conn.close()
 
-# ── List users (dynamic from DB) ────────────────────────────────────
 SKIP_USERS = {
     "postgres","supabase_admin","authenticator","supabase_auth_admin",
     "supabase_storage_admin","dashboard_user","pgbouncer","anon",
@@ -142,7 +136,6 @@ def list_users():
     finally:
         cur.close(); conn.close()
 
-# ── List roles (dynamic from DB) ────────────────────────────────────
 @app.get("/api/roles")
 def list_roles():
     conn = admin_conn(); cur = conn.cursor()
@@ -154,7 +147,6 @@ def list_roles():
     finally:
         cur.close(); conn.close()
 
-# ── Create user ──────────────────────────────────────────────────────
 @app.post("/api/users/create")
 def create_user(req: CreateUserReq):
     if req.admin_password != get_admin_password():
@@ -173,7 +165,6 @@ def create_user(req: CreateUserReq):
     finally:
         cur.close(); conn.close()
 
-# ── Delete user ──────────────────────────────────────────────────────
 @app.post("/api/users/delete")
 def delete_user(req: DeleteUserReq):
     if req.admin_password != get_admin_password():
@@ -191,7 +182,6 @@ def delete_user(req: DeleteUserReq):
     finally:
         cur.close(); conn.close()
 
-# ── Privileges ───────────────────────────────────────────────────────
 @app.get("/api/privileges")
 def privileges():
     conn = admin_conn(); cur = conn.cursor()
@@ -228,7 +218,6 @@ def toggle(req: ToggleReq):
     finally:
         cur.close(); conn.close()
 
-# ── Verify password ──────────────────────────────────────────────────
 @app.post("/api/verify")
 def verify_user(req: VerifyReq):
     try:
@@ -237,7 +226,6 @@ def verify_user(req: VerifyReq):
     except Exception:
         return {"ok": False}
 
-# ── User SQL (runs as that user — only SELECT/INSERT/UPDATE/DELETE allowed) ──
 def _manual_audit(conn, username: str, action: str, table: str, detail: str):
     try:
         c = conn.cursor()
@@ -249,7 +237,6 @@ def _manual_audit(conn, username: str, action: str, table: str, detail: str):
     except Exception:
         pass
 
-# DDL / privilege commands that non-admin users are NEVER allowed to run
 BLOCKED_PREFIXES = (
     "GRANT", "REVOKE", "CREATE", "DROP", "ALTER",
     "TRUNCATE", "VACUUM", "ANALYZE", "CLUSTER",
@@ -279,7 +266,7 @@ def user_sql(req: UserSqlReq):
     results = []
 
     for stmt in stmts:
-        # Block any DDL / privilege statements at the API level
+        
         if _is_blocked(stmt):
             results.append({
                 "ok": False,
@@ -337,7 +324,6 @@ def user_sql(req: UserSqlReq):
     conn.close()
     return {"results": results}
 
-# ── Admin SQL (superuser — full DDL allowed) ─────────────────────────
 @app.post("/api/admin/sql")
 def admin_sql(req: AdminSqlReq):
     if req.admin_password != get_admin_password():

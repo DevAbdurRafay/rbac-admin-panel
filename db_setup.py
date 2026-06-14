@@ -84,10 +84,10 @@ def run():
 
     print("── Creating roles (no users) ──")
     roles = [
-        "hr_manager_role",         # HR: full employee & dept control
-        "finance_analyst_role",    # Finance: salary & compensation data
-        "it_admin_role",           # IT: schema/access management support
-        "workforce_analyst_role",  # Monitoring & Analysis: read-only, reporting
+        "hr_manager_role",         
+        "finance_analyst_role",    
+        "it_admin_role",           
+        "workforce_analyst_role", 
     ]
     for r in roles:
         cur.execute(f"""
@@ -97,24 +97,19 @@ def run():
 
     print("── Setting role privileges ──")
 
-    # HR Manager — full control over employee records and departments
     cur.execute("GRANT SELECT,INSERT,UPDATE,DELETE ON employees,departments TO hr_manager_role;")
     cur.execute("GRANT SELECT ON salary_records TO hr_manager_role;")
     cur.execute("GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO hr_manager_role;")
 
-    # Finance Analyst — salary records full access, employee/dept read-only
     cur.execute("GRANT SELECT ON employees,departments TO finance_analyst_role;")
     cur.execute("GRANT SELECT,INSERT,UPDATE,DELETE ON salary_records TO finance_analyst_role;")
     cur.execute("GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO finance_analyst_role;")
 
-    # IT Admin — read access across all tables for troubleshooting & support
     cur.execute("GRANT SELECT ON employees,departments,salary_records,audit_log TO it_admin_role;")
     cur.execute("GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO it_admin_role;")
 
-    # Workforce Analyst — read-only on everything for dashboards & analysis
     cur.execute("GRANT SELECT ON employees,departments,salary_records TO workforce_analyst_role;")
 
-    # All roles can write to audit_log
     cur.execute("""
         GRANT INSERT ON audit_log TO
             hr_manager_role, finance_analyst_role, it_admin_role, workforce_analyst_role;
