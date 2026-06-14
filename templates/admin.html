@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>HR Admin Panel</title>
+<link rel="icon" type="image/jpeg" href="https://cdni.iconscout.com/illustration/premium/thumb/woman-working-on-database-admin-illustration-svg-download-png-13203553.png">
+<link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+
+<canvas id="matrix-bg"></canvas>
+
+<!-- Login -->
+<div id="login-screen">
+  <div class="login-card" style="position:relative;">
+    <div class="login-logo">
+      <div class="login-logo-icon">🛡️</div>
+      <div><h1>HR Admin Panel</h1></div>
+    </div>
+    <div class="login-sub">PostgreSQL · <span>RBAC</span> · Live Data</div>
+    <div class="field-label">Admin Password</div>
+    <div class="pw-wrap">
+      <input class="field-input" id="l-pass" type="password" placeholder="Enter admin password" autofocus/>
+      <button class="pw-eye" type="button" onclick="toggleEye('l-pass','eye-login')" id="eye-login">👁</button>
+    </div>
+    <button class="btn-login" onclick="doLogin()">Connect →</button>
+    <div class="login-status" id="login-status"></div>
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loading-overlay" style="display:flex">
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loading-msg">Connecting…</div>
+</div>
+
+<!-- Password Modal (for non-admin SQL users) -->
+<div class="modal-overlay" id="pw-modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">🔐 User Authentication</div>
+    <div class="modal-sub" id="pw-modal-sub">Enter password for user</div>
+    <div class="field-label">Password</div>
+    <div class="pw-wrap">
+      <input class="field-input" id="pw-modal-input" type="password" placeholder="Enter user password"/>
+      <button class="pw-eye" type="button" onclick="toggleEye('pw-modal-input','eye-pwmodal')" id="eye-pwmodal">👁</button>
+    </div>
+    <div class="modal-status" id="pw-modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closePwModal()">Cancel</button>
+      <button class="btn btn-green" onclick="confirmPwModal()">Authenticate →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="modal-overlay" id="del-modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">⚠️ Delete User</div>
+    <div class="modal-sub" id="del-modal-sub">This will permanently drop the DB user.</div>
+    <div class="field-label">Admin Password (confirm)</div>
+    <div class="pw-wrap">
+      <input class="field-input" id="del-modal-pw" type="password" placeholder="Admin password"/>
+      <button class="pw-eye" type="button" onclick="toggleEye('del-modal-pw','eye-delmodal')" id="eye-delmodal">👁</button>
+    </div>
+    <div class="modal-status" id="del-modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeDelModal()">Cancel</button>
+      <button class="btn btn-red" onclick="confirmDelete()">Delete User</button>
+    </div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-brand"><div class="live-dot"></div>HR Admin Panel</div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-sub">PostgreSQL · RBAC</div>
+    <div class="topbar-tabs">
+      <button class="tab-btn active" onclick="switchTab('dashboard',this)">Dashboard</button>
+      <button class="tab-btn" onclick="switchTab('sql',this)">SQL Editor</button>
+      <button class="tab-btn" onclick="switchTab('users',this)">Users & Roles</button>
+      <button class="tab-btn" onclick="switchTab('audit',this)">Audit Log</button>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-user">🔑 admin</span>
+      <button class="btn btn-blue btn-sm" onclick="refreshAll()">⟳ Refresh</button>
+      <button class="btn btn-red btn-sm" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- ── Dashboard Tab ── -->
+    <div class="tab-panel active" id="tab-dashboard">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-val" style="color:var(--blue)" id="s-total">—</div><div class="stat-label">Total Employees</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:var(--green)" id="s-depts">—</div><div class="stat-label">Departments</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:var(--yellow)" id="s-avg">—</div><div class="stat-label">Avg Monthly Income</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:var(--purple)" id="s-users">—</div><div class="stat-label">DB Users</div></div>
+      </div>
+
+      <div class="sql-log info" id="sql-log">
+        <span class="sql-log-label">Last SQL</span>
+        <span class="sql-log-text" id="sql-log-text">— waiting for privilege change —</span>
+      </div>
+
+      <!-- Privilege Matrix -->
+      <div class="priv-section">
+        <div class="section-hdr">
+          <div><div class="section-title">Privilege Matrix</div><div class="section-sub">Toggle to GRANT or REVOKE — changes apply instantly to PostgreSQL</div></div>
+        </div>
+        <div class="priv-wrap">
+          <table class="priv-table">
+            <thead id="priv-thead"></thead>
+            <tbody id="priv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Dept Summary -->
+      <div class="section-hdr">
+        <div><div class="section-title">Department Summary</div><div class="section-sub">Live aggregates from employees table</div></div>
+      </div>
+      <div class="dept-wrap">
+        <table class="dept-table">
+          <thead><tr><th>Department</th><th>Employees</th><th>Distribution</th><th>Avg Monthly Income</th></tr></thead>
+          <tbody id="dept-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── SQL Editor Tab ── -->
+    <div class="tab-panel" id="tab-sql">
+      <div class="section-hdr" style="margin-bottom:16px">
+        <div><div class="section-title">SQL Editor</div><div class="section-sub">Run queries as admin or any DB user — non-admin users require password each session</div></div>
+        <div id="current-user-badge" class="current-user-badge">Running as: <b>admin</b></div>
+      </div>
+
+      <div class="sql-editor-card">
+        <div class="sql-editor-top">
+          <span class="sql-user-label">Run as:</span>
+          <div id="user-btns-wrap">
+            <button class="user-run-btn admin-btn selected" onclick="selectSqlUser('admin',this)">🔑 admin</button>
+          </div>
+          <button class="btn btn-green sql-run-main" onclick="runSql()">▶ Run  <kbd style="font-size:9px;opacity:.6">Ctrl+↵</kbd></button>
+        </div>
+
+        <div class="sql-quick-btns">
+          <!-- SELECT group — always visible -->
+          <span style="font-size:10px;color:var(--muted);margin-right:4px">SELECT:</span>
+          <button class="quick-btn cat-select" onclick="setQuery('SELECT * FROM employees LIMIT 20;')">employees</button>
+          <button class="quick-btn cat-select" onclick="setQuery('SELECT * FROM departments;')">departments</button>
+          <button class="quick-btn cat-select" onclick="setQuery('SELECT * FROM salary_records LIMIT 20;')">salary_records</button>
+          <button class="quick-btn cat-select" onclick="setQuery('SELECT department, COUNT(*) as total,\n  ROUND(AVG(monthly_income)::numeric,0) as avg_income\nFROM employees\nGROUP BY department ORDER BY total DESC;')">dept summary</button>
+          <button class="quick-btn cat-select" onclick="setQuery('SELECT job_role, COUNT(*) as total,\n  ROUND(AVG(monthly_income)::numeric,0) as avg_income\nFROM employees\nGROUP BY job_role ORDER BY avg_income DESC;')">by job role</button>
+          <button class="quick-btn cat-select" onclick="setQuery('SELECT attrition, COUNT(*) as total,\n  ROUND(AVG(monthly_income)::numeric,0) as avg_income\nFROM employees GROUP BY attrition;')">attrition</button>
+          <button class="quick-btn cat-select" onclick="setQuery('SELECT gender, COUNT(*) as total FROM employees GROUP BY gender;')">gender split</button>
+
+          <!-- MODIFY group — always visible -->
+          <div class="quick-sep"></div>
+          <span style="font-size:10px;color:var(--muted);margin-right:4px">MODIFY:</span>
+          <button class="quick-btn cat-modify" onclick="setInsertTemplate()">INSERT employee</button>
+          <button class="quick-btn cat-modify" onclick="setUpdateTemplate()">UPDATE employee</button>
+          <button class="quick-btn cat-modify" onclick="setDeleteTemplate()">DELETE employee</button>
+
+          <!-- ADMIN-ONLY groups -->
+          <span class="admin-only-btns">
+            <div class="quick-sep"></div>
+            <span style="font-size:10px;color:var(--muted);margin-right:4px">ROLES:</span>
+            <button class="quick-btn cat-role" onclick="setCreateRoleTemplate()">CREATE ROLE</button>
+            <button class="quick-btn cat-role" onclick="setDropRoleTemplate()">DROP ROLE</button>
+            <div class="quick-sep"></div>
+            <span style="font-size:10px;color:var(--muted);margin-right:4px">USERS:</span>
+            <button class="quick-btn cat-user" onclick="setCreateUserTemplate()">CREATE USER</button>
+            <button class="quick-btn cat-user" onclick="setDropUserTemplate()">DROP USER</button>
+            <div class="quick-sep"></div>
+            <span style="font-size:10px;color:var(--muted);margin-right:4px">GRANTS:</span>
+            <button class="quick-btn cat-grant" onclick="setGrantTemplate()">GRANT priv</button>
+            <button class="quick-btn cat-grant" onclick="setRevokeTemplate()">REVOKE priv</button>
+            <button class="quick-btn cat-grant" onclick="setQuery('SELECT grantee, table_name, privilege_type\nFROM information_schema.role_table_grants\nWHERE table_schema=\'public\' AND grantee LIKE \'%_role\'\nORDER BY grantee, table_name;')">view grants</button>
+            <div class="quick-sep"></div>
+            <span style="font-size:10px;color:var(--muted);margin-right:4px">AUDIT:</span>
+            <button class="quick-btn cat-audit" onclick="setQuery('SELECT * FROM audit_log ORDER BY executed_at DESC LIMIT 20;')">audit_log</button>
+            <button class="quick-btn cat-audit" onclick="setQuery('SELECT username, action, table_name, COUNT(*) as total\nFROM audit_log\nGROUP BY username, action, table_name\nORDER BY total DESC;')">audit summary</button>
+          </span>
+        </div>
+
+        <textarea class="sql-textarea" id="sql-input"
+          placeholder="-- Write SQL here and press Ctrl+Enter to run
+-- SELECT, INSERT, UPDATE, DELETE all supported
+-- Changes are COMMITTED and reflected in real data
+
+SELECT * FROM employees LIMIT 10;"
+          onkeydown="sqlKeydown(event)"></textarea>
+
+        <div class="sql-results" id="sql-results">
+          <div class="sql-results-msg" style="color:var(--muted)">Results appear here…</div>
+        </div>
+        <div class="results-footer" id="results-footer" style="display:none">
+          <span id="results-info"></span>
+          <span id="results-user-tag"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Users & Roles Tab ── -->
+    <div class="tab-panel" id="tab-users">
+      <div class="section-hdr" style="margin-bottom:20px">
+        <div><div class="section-title">Users & Roles</div><div class="section-sub">Create or delete database users — changes reflect instantly in SQL Editor</div></div>
+      </div>
+
+      <div class="users-grid">
+        <!-- Left: Current Users -->
+        <div class="users-card">
+          <div class="users-card-header">
+            <div class="users-card-title">Current DB Users</div>
+            <button class="btn btn-sm btn-blue" onclick="loadUsersTab()">⟳ Refresh</button>
+          </div>
+          <div class="users-list" id="users-list">
+            <div class="no-users" style="color:var(--muted)">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Right: Create User -->
+        <div class="users-card">
+          <div class="users-card-header">
+            <div class="users-card-title">Create New User</div>
+          </div>
+          <div class="create-form">
+            <div class="field-label">Username</div>
+            <input class="field-input" id="new-username" placeholder="e.g. hr_manager1" style="margin-bottom:12px"/>
+
+            <div class="field-label">Password</div>
+            <div class="pw-wrap" style="margin-bottom:12px">
+              <input class="field-input" id="new-password" type="password" placeholder="Strong password"/>
+              <button class="pw-eye" type="button" onclick="toggleEye('new-password','eye-newpw')" id="eye-newpw">👁</button>
+            </div>
+
+            <div class="field-label">Assign Role</div>
+            <select class="field-input" id="new-role" style="margin-bottom:12px">
+              <option value="">Loading roles…</option>
+            </select>
+
+            <div class="field-label">Admin Password (to confirm)</div>
+            <div class="pw-wrap" style="margin-bottom:12px">
+              <input class="field-input" id="new-admin-pw" type="password" placeholder="Your admin password"/>
+              <button class="pw-eye" type="button" onclick="toggleEye('new-admin-pw','eye-newadmin')" id="eye-newadmin">👁</button>
+            </div>
+
+            <button class="btn btn-green" style="width:100%;padding:10px;font-size:13px;" onclick="createUser()">+ Create User</button>
+            <div class="modal-status" id="create-user-status" style="margin-top:8px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Roles info -->
+      <div class="section-hdr" style="margin-bottom:12px">
+        <div><div class="section-title">Available Roles</div><div class="section-sub">These roles and their privileges are managed from the Dashboard privilege matrix</div></div>
+      </div>
+      <div class="dept-wrap">
+        <table class="dept-table">
+          <thead><tr><th>Role Name</th><th>Description</th><th>Default Permissions</th></tr></thead>
+          <tbody id="roles-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Audit Tab ── -->
+    <div class="tab-panel" id="tab-audit">
+      <div class="section-hdr" style="margin-bottom:16px">
+        <div><div class="section-title">Audit Log</div><div class="section-sub">Last 200 recorded actions</div></div>
+        <button class="btn btn-blue btn-sm" onclick="loadAudit()">⟳ Refresh</button>
+      </div>
+      <div class="audit-wrap">
+        <table class="audit-table">
+          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Table</th><th>Detail</th></tr></thead>
+          <tbody id="audit-tbody"></tbody>
+        </table>
+        <div class="audit-empty" id="audit-empty">Loading audit log…</div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const API = 'http://localhost:8000';
+const CORRECT_ADMIN_PASSWORD = 'rafaysupadb2026';
+
+const TABLES = ['employees','departments','salary_records'];
+const PRIVS  = ['SELECT','INSERT','UPDATE','DELETE'];
+
+const ROLE_DESCRIPTIONS = {
+  'hr_manager_role':       {label:'HR Manager',            perms:'Full CRUD on employees & departments, Read salary'},
+  'finance_analyst_role':  {label:'Finance Analyst',       perms:'Read employees & departments, Full CRUD on salary_records'},
+  'it_admin_role':         {label:'IT Administrator',      perms:'Read-only on all tables including audit_log'},
+  'workforce_analyst_role':{label:'Workforce Analyst',     perms:'Read-only on employees, departments & salary_records'},
+  'hr_role':               {label:'HR',                    perms:'Manage employee records'},
+  'sales_role':            {label:'Sales',                 perms:'Read employees, manage sales data'},
+  'rd_role':               {label:'R&D',                   perms:'Read-only access to research data'},
+  'manager_role':          {label:'Manager',               perms:'Read employees & departments'},
+};
+
+const ROLE_COLORS = {
+  'hr_manager_role':       {bg:'#061a10',border:'#00e676',text:'#00e676'},
+  'hr_role':               {bg:'#061a10',border:'#00e676',text:'#00e676'},
+  'finance_analyst_role':  {bg:'#1a0f00',border:'#ffd740',text:'#ffd740'},
+  'it_admin_role':         {bg:'#06101e',border:'#4fc3f7',text:'#4fc3f7'},
+  'workforce_analyst_role':{bg:'#100618',border:'#ce93d8',text:'#ce93d8'},
+  'sales_role':            {bg:'#1a0600',border:'#ff8a65',text:'#ff8a65'},
+  'rd_role':               {bg:'#06101e',border:'#29b6f6',text:'#29b6f6'},
+  'manager_role':          {bg:'#100618',border:'#ab47bc',text:'#ab47bc'},
+  'executive_manager_role':{bg:'#181200',border:'#ffd740',text:'#ffd740'},
+  'finance_role':          {bg:'#100618',border:'#ce93d8',text:'#ce93d8'},
+  'rd_director_role':      {bg:'#06101e',border:'#4fc3f7',text:'#4fc3f7'},
+  'sales_manager_role':    {bg:'#061a10',border:'#00e676',text:'#00e676'},
+};
+
+// State
+let adminPassword    = '';
+let privData         = {};
+let dbUsers          = [];
+let dbRoles          = [];
+let selectedSqlUser  = 'admin';
+let userPasswords    = {};
+let pendingPwUser    = null;
+let pendingPwResolve = null;
+let deleteTarget     = null;
+let activeTabName    = localStorage.getItem('hr_active_tab') || 'dashboard';
+
+// ── Matrix Rain ──────────────────────────────────────────────────────────
+(function(){
+  const canvas = document.getElementById('matrix-bg');
+  const ctx    = canvas.getContext('2d');
+  let W, H, cols, drops;
+  const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+  function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; cols=Math.floor(W/16); drops=Array.from({length:cols},()=>Math.random()*-100); }
+  function draw(){
+    ctx.fillStyle='rgba(6,10,14,0.06)'; ctx.fillRect(0,0,W,H);
+    ctx.font='14px JetBrains Mono,monospace';
+    for(let i=0;i<cols;i++){
+      const c=chars[Math.floor(Math.random()*chars.length)];
+      const bright=drops[i]>0&&(drops[i]%1<0.05);
+      ctx.fillStyle=bright?'#00ff88':`rgba(0,200,100,${Math.random()*.6+.1})`;
+      ctx.fillText(c,i*16,drops[i]*16);
+      if(drops[i]*16>H&&Math.random()>.975) drops[i]=0;
+      drops[i]+=.4+Math.random()*.3;
+    }
+  }
+  resize(); window.addEventListener('resize',resize); setInterval(draw,50);
+})();
+
+// ── Eye toggle ───────────────────────────────────────────────────────
+function toggleEye(inputId, btnId){
+  const input = document.getElementById(inputId);
+  const btn   = document.getElementById(btnId);
+  if(input.type === 'password'){
+    input.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁';
+  }
+}
+
+// ── Utilities ────────────────────────────────────────────────────────
+function toast(msg,type='info'){
+  const el=document.createElement('div'); el.className=`toast ${type}`;
+  const icons={grant:'✓',revoke:'✗',info:'ℹ',err:'⚠'};
+  el.innerHTML=`<span>${icons[type]||'·'}</span><span>${escHtml(msg)}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(()=>el.style.opacity='0',2800); setTimeout(()=>el.remove(),3100);
+}
+function setLog(sql,type='info'){
+  const log=document.getElementById('sql-log'); log.className=`sql-log ${type}`;
+  document.getElementById('sql-log-text').textContent=sql;
+}
+function animateNum(el,target){
+  const t0=performance.now();
+  function step(t){ const p=Math.min((t-t0)/900,1),e=1-Math.pow(1-p,3); el.textContent=Math.floor(e*target).toLocaleString(); if(p<1)requestAnimationFrame(step); }
+  requestAnimationFrame(step);
+}
+function loading(show,msg='Loading…'){
+  document.getElementById('loading-msg').textContent=msg;
+  document.getElementById('loading-overlay').style.display=show?'flex':'none';
+}
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function switchTab(name,btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  activeTabName = name;
+  localStorage.setItem('hr_active_tab', name);
+  if(name==='users') loadUsersTab();
+  if(name==='audit') loadAudit();
+}
+
+// ── Login ────────────────────────────────────────────────────────────
+document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+
+async function doLogin(){
+  const st=document.getElementById('login-status');
+  const pw=document.getElementById('l-pass').value.trim();
+  if(!pw){ st.className='login-status error'; st.textContent='Enter admin password'; return; }
+
+  if(pw !== CORRECT_ADMIN_PASSWORD){
+    st.className='login-status error';
+    st.textContent='Wrong admin password. Access denied.';
+    return;
+  }
+
+  st.className='login-status'; st.textContent='Connecting…';
+  try{
+    const res=await fetch(`${API}/api/health`);
+    const d=await res.json();
+    if(d.status==='ok'){
+      adminPassword = pw;
+      localStorage.setItem('hr_admin_pw', pw);
+      sessionStorage.setItem('hr_session_alive', '1');
+      st.className='login-status ok'; st.textContent='Connected ✓';
+      setTimeout(async()=>{
+        document.getElementById('login-screen').style.display='none';
+        document.getElementById('app').style.display='block';
+        loading(true,'Loading dashboard…');
+        await refreshAll();
+        loading(false);
+      },400);
+    } else {
+      st.className='login-status error'; st.textContent='DB error';
+    }
+  } catch(e){
+    st.className='login-status error'; st.textContent='Cannot reach backend (localhost:8000)';
+  }
+}
+
+function doLogout(){
+  adminPassword = '';
+  localStorage.removeItem('hr_admin_pw');
+  localStorage.removeItem('hr_active_tab');
+  sessionStorage.removeItem('hr_session_alive');
+  userPasswords={};
+  dbUsers=[];
+  selectedSqlUser='admin';
+  activeTabName='dashboard';
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('l-pass').value='';
+  document.getElementById('login-status').textContent='';
+  ['l-pass','pw-modal-input','del-modal-pw','new-password','new-admin-pw'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.type='password';
+  });
+}
+
+// ── Load all data ────────────────────────────────────────────────────
+async function refreshAll(){
+  await Promise.all([loadStats(), loadPrivileges(), loadDbUsers(), loadDbRoles()]);
+  if(activeTabName==='users') { renderUsersList(); renderRolesList(); }
+  if(activeTabName==='audit') { await loadAudit(); }
+  setLog('Data refreshed','info'); toast('Refreshed','info');
+}
+
+async function loadStats(){
+  try{
+    const res=await fetch(`${API}/api/stats`); const d=await res.json();
+    animateNum(document.getElementById('s-total'),d.total_employees);
+    document.getElementById('s-depts').textContent=d.departments.length;
+    const avg=d.departments.reduce((a,b)=>a+b.avg_sal,0)/(d.departments.length||1);
+    document.getElementById('s-avg').textContent='$'+Math.round(avg).toLocaleString();
+    const max=Math.max(...d.departments.map(x=>x.total));
+    const tbody=document.getElementById('dept-tbody'); tbody.innerHTML='';
+    d.departments.forEach(dept=>{
+      const pct=Math.round((dept.total/max)*100);
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td style="font-weight:500">${escHtml(dept.dept)}</td><td>${dept.total.toLocaleString()}</td><td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" data-pct="${pct}"></div></div><div class="bar-val">${pct}%</div></div></td><td style="color:var(--yellow)">$${dept.avg_sal.toLocaleString()}</td>`;
+      tbody.appendChild(tr);
+    });
+    setTimeout(()=>{ document.querySelectorAll('.bar-fill').forEach(b=>{ b.style.width=b.dataset.pct+'%'; }); },150);
+  } catch(e){ console.warn('loadStats error',e); }
+}
+
+async function loadDbUsers(){
+  try{
+    const res=await fetch(`${API}/api/users`); dbUsers=await res.json();
+    document.getElementById('s-users').textContent=dbUsers.length;
+    rebuildUserButtons();
+  } catch(e){ console.warn('loadDbUsers error',e); }
+}
+
+async function loadDbRoles(){
+  try{
+    const res=await fetch(`${API}/api/roles`); dbRoles=await res.json();
+    const sel=document.getElementById('new-role');
+    sel.innerHTML=dbRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
+  } catch(e){ console.warn('loadDbRoles error',e); }
+}
+
+async function loadPrivileges(){
+  try{
+    const res=await fetch(`${API}/api/privileges`); privData=await res.json();
+    renderPrivTable();
+  } catch(e){ console.warn('loadPrivileges error',e); }
+}
+
+// ── User Buttons (SQL Editor) ────────────────────────────────────────
+function rebuildUserButtons(){
+  const wrap=document.getElementById('user-btns-wrap');
+  const adminBtn=wrap.querySelector('.admin-btn');
+  wrap.innerHTML=''; wrap.appendChild(adminBtn);
+
+  dbUsers.forEach(u=>{
+    const btn=document.createElement('button');
+    btn.className='user-run-btn';
+    btn.textContent='👤 '+u.username;
+    btn.title=u.roles.length?'Roles: '+u.roles.join(', '):'No role assigned';
+    btn.onclick=()=>selectSqlUser(u.username,btn);
+    wrap.appendChild(btn);
+  });
+
+  if(selectedSqlUser!=='admin'){
+    const allBtns=wrap.querySelectorAll('.user-run-btn');
+    let found=false;
+    allBtns.forEach(b=>{ if(b.textContent.includes(selectedSqlUser)){ b.classList.add('selected'); found=true; } });
+    if(!found){ selectedSqlUser='admin'; adminBtn.classList.add('selected'); }
+  } else {
+    adminBtn.classList.add('selected');
+  }
+}
+
+// ── Show/hide admin-only quick buttons ───────────────────────────────
+function updateQuickBtnsVisibility(){
+  const adminOnlySpan = document.querySelector('.admin-only-btns');
+  if(adminOnlySpan){
+    adminOnlySpan.style.display = selectedSqlUser === 'admin' ? '' : 'none';
+  }
+}
+
+// ── Password Modal ───────────────────────────────────────────────────
+function showPwModal(username){
+  return new Promise(resolve=>{
+    pendingPwUser=username; pendingPwResolve=resolve;
+    document.getElementById('pw-modal-sub').textContent=`Enter password for user: ${username}`;
+    document.getElementById('pw-modal-input').value='';
+    document.getElementById('pw-modal-input').type='password';
+    document.getElementById('eye-pwmodal').textContent='👁';
+    document.getElementById('pw-modal-status').textContent='';
+    document.getElementById('pw-modal').style.display='flex';
+    setTimeout(()=>document.getElementById('pw-modal-input').focus(),50);
+  });
+}
+function closePwModal(){
+  document.getElementById('pw-modal').style.display='none';
+  if(pendingPwResolve) pendingPwResolve(null);
+  pendingPwResolve=null; pendingPwUser=null;
+}
+async function confirmPwModal(){
+  const pw=document.getElementById('pw-modal-input').value;
+  if(!pw){ document.getElementById('pw-modal-status').className='modal-status err'; document.getElementById('pw-modal-status').textContent='Enter password'; return; }
+  document.getElementById('pw-modal-status').className='modal-status'; document.getElementById('pw-modal-status').textContent='Verifying…';
+
+  // Admin user — verify against hardcoded password only (no API call needed)
+  if(pendingPwUser === 'admin'){
+    if(pw === CORRECT_ADMIN_PASSWORD){
+      document.getElementById('pw-modal').style.display='none';
+      if(pendingPwResolve) pendingPwResolve(pw);
+      pendingPwResolve=null; pendingPwUser=null;
+    } else {
+      document.getElementById('pw-modal-status').className='modal-status err';
+      document.getElementById('pw-modal-status').textContent='Wrong admin password. Try again.';
+    }
+    return;
+  }
+
+  // Non-admin users — verify via API
+  try{
+    const res=await fetch(`${API}/api/verify`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:pendingPwUser,password:pw})});
+    const d=await res.json();
+    if(d.ok){
+      userPasswords[pendingPwUser]=pw;
+      document.getElementById('pw-modal').style.display='none';
+      if(pendingPwResolve) pendingPwResolve(pw);
+      pendingPwResolve=null; pendingPwUser=null;
+    } else {
+      document.getElementById('pw-modal-status').className='modal-status err';
+      document.getElementById('pw-modal-status').textContent='Wrong password. Try again.';
+    }
+  } catch(e){
+    document.getElementById('pw-modal-status').className='modal-status err';
+    document.getElementById('pw-modal-status').textContent='Connection error.';
+  }
+}
+document.getElementById('pw-modal-input').addEventListener('keydown',e=>{ if(e.key==='Enter') confirmPwModal(); });
+
+// ── SQL User Select — always ask password on every switch ────────────
+async function selectSqlUser(user, btn){
+  const pw = await showPwModal(user);
+  if(!pw){ toast('Authentication cancelled','info'); return; }
+
+  if(user === 'admin' && pw !== CORRECT_ADMIN_PASSWORD){
+    toast('Wrong admin password','err'); return;
+  }
+
+  selectedSqlUser = user;
+  document.querySelectorAll('.user-run-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  document.getElementById('current-user-badge').innerHTML=`Running as: <b>${escHtml(user)}</b>`;
+  updateQuickBtnsVisibility();
+  toast(`Authenticated as ${user}`, 'grant');
+}
+
+// ── SQL Query Templates ──────────────────────────────────────────────
+function setQuery(q){ document.getElementById('sql-input').value=q; document.getElementById('sql-input').focus(); }
+
+function setInsertTemplate(){
+  setQuery(`INSERT INTO employees (
+  emp_id, age, age_group, attrition, business_travel, daily_rate,
+  department, distance_from_home, education, education_field,
+  employee_number, environment_satisfaction, gender, hourly_rate,
+  job_involvement, job_level, job_role, job_satisfaction,
+  marital_status, monthly_income, salary_slab, monthly_rate,
+  num_companies_worked, overtime, percent_salary_hike,
+  performance_rating, relationship_satisfaction, standard_hours,
+  stock_option_level, total_working_years, training_times_last_year,
+  work_life_balance, years_at_company, years_in_current_role,
+  years_since_last_promotion, years_with_curr_manager
+) VALUES (
+  'RM25009', 30, '25-34', 'No', 'Travel_Rarely', 800,
+  'Sales', 5, 3, 'Life Sciences',
+  9999, 3, 'Male', 60,
+  3, 2, 'Sales Executive', 3,
+  'Single', 5000.00, '3k-6k', 15000,
+  2, 'No', 12,
+  3, 3, 80,
+  1, 6, 2,
+  3, 3, 2,
+  1, 3
+);`);
+}
+
+function setUpdateTemplate(){
+  setQuery(`UPDATE employees
+SET monthly_income = 6500.00,
+    job_level = 3,
+    years_in_current_role = 4
+WHERE emp_id = 'RM25009';
+
+SELECT emp_id, monthly_income, job_level, years_in_current_role
+FROM employees WHERE emp_id = 'RM25009';`);
+}
+
+function setDeleteTemplate(){
+  setQuery(`DELETE FROM employees WHERE emp_id = 'RM25009';
+
+SELECT COUNT(*) FROM employees WHERE emp_id = 'RM25009';`);
+}
+
+function setCreateRoleTemplate(){
+  setQuery(`CREATE ROLE my_new_role;
+
+GRANT SELECT ON employees TO my_new_role;
+GRANT SELECT ON departments TO my_new_role;
+
+SELECT rolname FROM pg_roles WHERE rolname = 'my_new_role';`);
+}
+
+function setDropRoleTemplate(){
+  setQuery(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM my_new_role;
+
+REVOKE my_new_role FROM username_here;
+
+DROP ROLE IF EXISTS my_new_role;
+
+SELECT rolname FROM pg_roles WHERE rolname = 'my_new_role';`);
+}
+
+function setCreateUserTemplate(){
+  setQuery(`CREATE USER new_user WITH PASSWORD 'StrongPass@123';
+
+GRANT hr_manager_role TO new_user;
+
+ALTER USER new_user SET search_path TO public;
+
+SELECT usename, usesuper FROM pg_user WHERE usename = 'new_user';`);
+}
+
+function setDropUserTemplate(){
+  setQuery(`REVOKE hr_manager_role FROM username_here;
+
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM username_here;
+
+DROP USER IF EXISTS username_here;
+
+SELECT usename FROM pg_user WHERE usename = 'username_here';`);
+}
+
+function setGrantTemplate(){
+  setQuery(`GRANT SELECT ON employees TO hr_manager_role;
+GRANT INSERT ON employees TO hr_manager_role;
+GRANT UPDATE ON employees TO hr_manager_role;
+GRANT DELETE ON employees TO hr_manager_role;
+
+GRANT ALL PRIVILEGES ON salary_records TO finance_analyst_role;
+
+SELECT grantee, table_name, privilege_type
+FROM information_schema.role_table_grants
+WHERE grantee = 'hr_manager_role'
+ORDER BY table_name, privilege_type;`);
+}
+
+function setRevokeTemplate(){
+  setQuery(`REVOKE DELETE ON employees FROM hr_manager_role;
+REVOKE INSERT ON salary_records FROM workforce_analyst_role;
+
+REVOKE ALL PRIVILEGES ON departments FROM it_admin_role;
+
+SELECT grantee, table_name, privilege_type
+FROM information_schema.role_table_grants
+WHERE grantee = 'hr_manager_role'
+ORDER BY table_name, privilege_type;`);
+}
+
+function sqlKeydown(e){
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); runSql(); }
+  if(e.key==='Tab'){ e.preventDefault(); const ta=e.target,s=ta.selectionStart; ta.value=ta.value.substring(0,s)+'  '+ta.value.substring(ta.selectionEnd); ta.selectionStart=ta.selectionEnd=s+2; }
+}
+
+// ── Run SQL ──────────────────────────────────────────────────────────
+async function runSql(){
+  const sql=document.getElementById('sql-input').value.trim();
+  if(!sql){ toast('Write a query first','err'); return; }
+
+  const resultsEl=document.getElementById('sql-results');
+  const footerEl=document.getElementById('results-footer');
+  resultsEl.innerHTML=`<div class="sql-results-msg" style="color:var(--muted)">Running…</div>`;
+  footerEl.style.display='none';
+
+  let endpoint, body;
+  if(selectedSqlUser==='admin'){
+    endpoint='/api/admin/sql';
+    body={sql, admin_password:adminPassword};
+  } else {
+    const pw=userPasswords[selectedSqlUser];
+    if(!pw){ toast('No password cached — click user button to authenticate','err'); return; }
+    endpoint='/api/sql';
+    body={username:selectedSqlUser, password:pw, sql};
+  }
+
+  try{
+    const res=await fetch(`${API}${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await res.json();
+    const results=data.results||[data];
+    renderSqlResults(results);
+  } catch(e){
+    resultsEl.innerHTML=`<div class="sql-results-msg err">⚠ Connection error — is backend running?</div>`;
+    toast('Connection error','err');
+  }
+}
+
+function renderSqlResults(results){
+  const resultsEl=document.getElementById('sql-results');
+  const footerEl=document.getElementById('results-footer');
+  resultsEl.innerHTML='';
+  let totalRows=0;
+
+  results.forEach(r=>{
+    if(!r.ok){
+      const isPerm=r.type==='permission'||String(r.error).toLowerCase().includes('permission');
+      const div=document.createElement('div');
+      div.className='perm-banner';
+      div.innerHTML=`<div class="perm-banner-icon">${isPerm?'🔒':'⚠️'}</div><div><div class="perm-banner-title">${isPerm?'Permission Denied':'Query Error'}</div><div class="perm-banner-detail">${escHtml(r.detail||r.error||'Unknown error')}</div></div>`;
+      resultsEl.appendChild(div);
+      toast(isPerm?'Permission denied':'Query error','err');
+    } else if(r.type==='select'&&r.columns&&r.columns.length){
+      let html='<table class="results-table"><thead><tr>';
+      r.columns.forEach(c=>{ html+=`<th>${escHtml(c)}</th>`; });
+      html+='</tr></thead><tbody>';
+      r.rows.forEach(row=>{
+        html+='<tr>';
+        r.columns.forEach(c=>{ const v=row[c]; html+=`<td title="${escHtml(String(v??''))}">${escHtml(String(v??'NULL'))}</td>`; });
+        html+='</tr>';
+      });
+      html+='</tbody></table>';
+      resultsEl.insertAdjacentHTML('beforeend',html);
+      totalRows+=r.rowcount;
+      toast(`${r.rowcount} rows returned`,'info');
+    } else {
+      const msg=r.message||`✓ ${r.rowcount} row(s) affected`;
+      resultsEl.insertAdjacentHTML('beforeend',`<div class="sql-results-msg ok">${escHtml(msg)}</div>`);
+      toast('Query executed','grant');
+    }
+  });
+
+  footerEl.style.display='flex';
+  document.getElementById('results-info').textContent=`${totalRows} row(s)`;
+  document.getElementById('results-user-tag').innerHTML=`<span style="color:var(--muted2)">as </span><b>${escHtml(selectedSqlUser)}</b>`;
+}
+
+// ── Privilege Matrix ─────────────────────────────────────────────────
+function getRoleColor(role){
+  return ROLE_COLORS[role] || {bg:'#0a0a14',border:'#303050',text:'#8090b0'};
+}
+
+function renderPrivTable(){
+  const thead=document.getElementById('priv-thead');
+  const tbody=document.getElementById('priv-tbody');
+  let h1=`<tr><th class="th-user" rowspan="2">USER</th><th class="th-role" rowspan="2">ROLE</th>`;
+  TABLES.forEach(t=>{ h1+=`<th class="th-group" colspan="${PRIVS.length}">${t.replace(/_/g,' ')}</th>`; });
+  h1+='</tr>';
+  let h2='<tr>';
+  TABLES.forEach(()=>{ PRIVS.forEach(p=>{ h2+=`<th>${p}</th>`; }); });
+  h2+='</tr>';
+  thead.innerHTML=h1+h2;
+  tbody.innerHTML='';
+
+  if(!dbUsers.length){ tbody.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:var(--muted)">No users created yet — go to Users & Roles tab</td></tr>'; return; }
+
+  dbUsers.forEach(u=>{
+    const roleName=u.roles[0]||null;
+    if(!roleName) return;
+    const tr=document.createElement('tr');
+    const rc=getRoleColor(roleName);
+    let cells=`
+      <td class="user-cell"><div class="user-name">${escHtml(u.username)}</div></td>
+      <td class="role-cell"><span class="role-badge" style="background:${rc.bg};border-color:${rc.border};color:${rc.text}">${escHtml(roleName)}</span></td>`;
+    TABLES.forEach(table=>{
+      const granted=(privData[roleName]&&privData[roleName][table])||[];
+      PRIVS.forEach(priv=>{
+        const checked=granted.includes(priv);
+        cells+=`<td><div class="toggle-wrap"><label class="toggle"><input type="checkbox" ${checked?'checked':''} onchange="togglePriv('${roleName}','${table}','${priv}',this)"><div class="toggle-track"></div><div class="toggle-thumb"></div></label></div></td>`;
+      });
+    });
+    tr.innerHTML=cells;
+    tbody.appendChild(tr);
+  });
+}
+
+async function togglePriv(role,table,priv,cb){
+  const action=cb.checked?'GRANT':'REVOKE';
+  cb.disabled=true;
+  try{
+    const res=await fetch(`${API}/api/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,table,priv,action,admin_password:adminPassword})});
+    const data=await res.json();
+    if(data.ok){
+      setLog(data.sql,action==='GRANT'?'grant':'revoke');
+      toast(`${action} ${priv} ON ${table} TO ${role}`,action==='GRANT'?'grant':'revoke');
+      await loadPrivileges();
+    } else {
+      cb.checked=!cb.checked;
+      toast('Error: '+(data.detail||'unknown'),'err');
+      setLog('ERROR: '+data.detail,'revoke');
+    }
+  } catch(e){ cb.checked=!cb.checked; toast('Connection error','err'); }
+  cb.disabled=false;
+}
+
+// ── Users Tab ────────────────────────────────────────────────────────
+async function loadUsersTab(){
+  await Promise.all([loadDbUsers(), loadDbRoles()]);
+  renderUsersList();
+  renderRolesList();
+}
+
+function renderUsersList(){
+  const list=document.getElementById('users-list');
+  if(!dbUsers.length){ list.innerHTML='<div class="no-users">No users yet. Create one →</div>'; return; }
+  list.innerHTML='';
+  dbUsers.forEach(u=>{
+    const div=document.createElement('div'); div.className='user-row';
+    const roleLabel=u.roles.length?u.roles.join(', '):'No role';
+    const rc=u.roles[0]?getRoleColor(u.roles[0]):{bg:'#0a0a14',border:'#303050',text:'#8090b0'};
+    div.innerHTML=`
+      <div class="user-avatar">👤</div>
+      <div class="user-info">
+        <div class="user-info-name">${escHtml(u.username)}</div>
+        <div class="user-info-role"><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:600;background:${rc.bg};border:1px solid ${rc.border};color:${rc.text};font-family:'JetBrains Mono',monospace">${escHtml(roleLabel)}</span></div>
+      </div>
+      <button class="user-delete-btn" onclick="askDelete('${escHtml(u.username)}')">🗑 Delete</button>`;
+    list.appendChild(div);
+  });
+}
+
+function renderRolesList(){
+  const tbody=document.getElementById('roles-tbody'); tbody.innerHTML='';
+  dbRoles.forEach(role=>{
+    const info=ROLE_DESCRIPTIONS[role]||{label:role,perms:'Custom role'};
+    const rc=getRoleColor(role);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><span class="role-badge" style="background:${rc.bg};border-color:${rc.border};color:${rc.text}">${escHtml(role)}</span></td><td style="color:var(--text)">${escHtml(info.label)}</td><td style="color:var(--muted);font-size:11px">${escHtml(info.perms)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function createUser(){
+  const username=document.getElementById('new-username').value.trim();
+  const password=document.getElementById('new-password').value;
+  const role=document.getElementById('new-role').value;
+  const apw=document.getElementById('new-admin-pw').value;
+  const status=document.getElementById('create-user-status');
+
+  if(!username||!password||!role||!apw){ status.className='modal-status err'; status.textContent='Fill all fields'; return; }
+
+  if(apw !== CORRECT_ADMIN_PASSWORD){
+    status.className='modal-status err'; status.textContent='Wrong admin password';
+    return;
+  }
+
+  status.className='modal-status'; status.textContent='Creating…';
+  try{
+    const res=await fetch(`${API}/api/users/create`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password,role,admin_password:apw})});
+    const d=await res.json();
+    if(d.ok){
+      status.className='modal-status ok'; status.textContent=d.message;
+      toast('User created: '+username,'grant');
+      document.getElementById('new-username').value='';
+      document.getElementById('new-password').value='';
+      document.getElementById('new-admin-pw').value='';
+      await loadUsersTab();
+      rebuildUserButtons();
+      renderPrivTable();
+    } else {
+      status.className='modal-status err'; status.textContent=d.error;
+      toast('Error: '+d.error,'err');
+    }
+  } catch(e){
+    status.className='modal-status err'; status.textContent='Connection error';
+    toast('Connection error','err');
+  }
+}
+
+function askDelete(username){
+  deleteTarget=username;
+  document.getElementById('del-modal-sub').textContent=`Delete user: ${username}`;
+  document.getElementById('del-modal-pw').value='';
+  document.getElementById('del-modal-pw').type='password';
+  document.getElementById('eye-delmodal').textContent='👁';
+  document.getElementById('del-modal-status').textContent='';
+  document.getElementById('del-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('del-modal-pw').focus(),50);
+}
+function closeDelModal(){ document.getElementById('del-modal').style.display='none'; deleteTarget=null; }
+
+async function confirmDelete(){
+  const apw=document.getElementById('del-modal-pw').value;
+  if(!apw){ document.getElementById('del-modal-status').className='modal-status err'; document.getElementById('del-modal-status').textContent='Enter admin password'; return; }
+
+  if(apw !== CORRECT_ADMIN_PASSWORD){
+    document.getElementById('del-modal-status').className='modal-status err';
+    document.getElementById('del-modal-status').textContent='Wrong admin password. Access denied.';
+    return;
+  }
+
+  document.getElementById('del-modal-status').className='modal-status'; document.getElementById('del-modal-status').textContent='Deleting…';
+  try{
+    const res=await fetch(`${API}/api/users/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:deleteTarget,admin_password:apw})});
+    const d=await res.json();
+    if(d.ok){
+      closeDelModal();
+      toast('User deleted: '+deleteTarget,'revoke');
+      delete userPasswords[deleteTarget];
+      if(selectedSqlUser===deleteTarget){ selectedSqlUser='admin'; }
+      await loadUsersTab();
+      rebuildUserButtons();
+      renderPrivTable();
+    } else {
+      document.getElementById('del-modal-status').className='modal-status err';
+      document.getElementById('del-modal-status').textContent=d.error;
+    }
+  } catch(e){
+    document.getElementById('del-modal-status').className='modal-status err';
+    document.getElementById('del-modal-status').textContent='Connection error';
+  }
+}
+document.getElementById('del-modal-pw').addEventListener('keydown',e=>{ if(e.key==='Enter') confirmDelete(); });
+
+// ── Audit Log ────────────────────────────────────────────────────────
+async function loadAudit(){
+  document.getElementById('audit-empty').textContent='Loading…';
+  document.getElementById('audit-empty').style.display='block';
+  document.getElementById('audit-tbody').innerHTML='';
+  try{
+    const res=await fetch(`${API}/api/audit`); const rows=await res.json();
+    const tbody=document.getElementById('audit-tbody');
+    if(!rows.length){ document.getElementById('audit-empty').textContent='No audit entries yet.'; return; }
+    document.getElementById('audit-empty').style.display='none';
+    rows.forEach(r=>{
+      const tr=document.createElement('tr');
+      const ts=r.ts?new Date(r.ts).toLocaleString():'—';
+      const action=r.action||'—';
+      tr.innerHTML=`
+        <td style="color:var(--muted)">${escHtml(ts)}</td>
+        <td style="color:var(--blue)">${escHtml(r.username||'—')}</td>
+        <td><span class="audit-action ${action}">${escHtml(action)}</span></td>
+        <td style="color:var(--yellow)">${escHtml(r.table_name||'—')}</td>
+        <td style="color:var(--muted2);max-width:300px;overflow:hidden;text-overflow:ellipsis">${escHtml(r.detail||'—')}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch(e){
+    document.getElementById('audit-empty').textContent='Error loading audit log.';
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  const isRefresh = sessionStorage.getItem('hr_session_alive');
+
+  if (!isRefresh) {
+    localStorage.removeItem('hr_admin_pw');
+    localStorage.removeItem('hr_active_tab');
+    loading(false);
+    return;
+  }
+
+  const savedPw = localStorage.getItem('hr_admin_pw');
+  const savedTab = localStorage.getItem('hr_active_tab') || 'dashboard';
+
+  if (savedPw && savedPw === CORRECT_ADMIN_PASSWORD) {
+    try {
+      const res = await fetch(`${API}/api/health`, { signal: AbortSignal.timeout(2000) });
+      const d = await res.json();
+      if (d.status === 'ok') {
+        adminPassword = savedPw;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        loading(true, 'Restoring session…');
+        await refreshAll();
+        loading(false);
+        updateQuickBtnsVisibility();
+
+        const tabBtn = [...document.querySelectorAll('.tab-btn')]
+          .find(b => b.getAttribute('onclick')?.includes(`'${savedTab}'`));
+        if (tabBtn) switchTab(savedTab, tabBtn);
+        return;
+      }
+    } catch (e) { /* show login */ }
+  }
+
+  loading(false);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# Contains database passwords, API keys, and secret tokens
+.env
+
+# Prevents exposing your local absolute file paths and machine-specific setups
+venv/
+__pycache__/
+*.py[cod]
+
+# Local editor settings that shouldn't be shared
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
