@@ -600,14 +600,22 @@ async function confirmPwModal(){
 }
 document.getElementById('pw-modal-input').addEventListener('keydown',e=>{ if(e.key==='Enter') confirmPwModal(); });
 
-// ── SQL User Select — always ask password on every switch ────────────
+// ── SQL User Select — ask password only if not cached ────────────────
 async function selectSqlUser(user, btn){
+  // Already have password cached — just switch directly
+  if(user === 'admin' || userPasswords[user]){
+    selectedSqlUser = user;
+    document.querySelectorAll('.user-run-btn').forEach(b=>b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('current-user-badge').innerHTML=`Running as: <b>${escHtml(user)}</b>`;
+    updateQuickBtnsVisibility();
+    toast(`Switched to ${user}`, 'info');
+    return;
+  }
+
+  // No cached password — ask once
   const pw = await showPwModal(user);
   if(!pw){ toast('Authentication cancelled','info'); return; }
-
-  if(user === 'admin' && pw !== CORRECT_ADMIN_PASSWORD){
-    toast('Wrong admin password','err'); return;
-  }
 
   selectedSqlUser = user;
   document.querySelectorAll('.user-run-btn').forEach(b=>b.classList.remove('selected'));
