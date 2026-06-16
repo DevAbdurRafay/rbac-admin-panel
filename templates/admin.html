@@ -35,7 +35,7 @@
   <div class="loading-msg" id="loading-msg">Connecting…</div>
 </div>
 
-<!-- Password Modal (for non-admin SQL users) -->
+<!-- Password Modal -->
 <div class="modal-overlay" id="pw-modal" style="display:none">
   <div class="modal-box">
     <div class="modal-title">🔐 User Authentication</div>
@@ -81,7 +81,7 @@
       <button class="tab-btn active" onclick="switchTab('dashboard',this)">Dashboard</button>
       <button class="tab-btn" onclick="switchTab('sql',this)">SQL Editor</button>
       <button class="tab-btn" onclick="switchTab('users',this)">Users & Roles</button>
-      <button class="tab-btn" onclick="switchTab('audit',this)">Audit Log</button>
+      <button class="tab-btn" id="audit-tab-btn" onclick="switchTab('audit',this)">Audit Log</button>
     </div>
     <div class="topbar-right">
       <span class="topbar-user">🔑 admin</span>
@@ -106,7 +106,6 @@
         <span class="sql-log-text" id="sql-log-text">— waiting for privilege change —</span>
       </div>
 
-      <!-- Privilege Matrix -->
       <div class="priv-section">
         <div class="section-hdr">
           <div><div class="section-title">Privilege Matrix</div><div class="section-sub">Toggle to GRANT or REVOKE — changes apply instantly to PostgreSQL</div></div>
@@ -119,7 +118,6 @@
         </div>
       </div>
 
-      <!-- Dept Summary -->
       <div class="section-hdr">
         <div><div class="section-title">Department Summary</div><div class="section-sub">Live aggregates from employees table</div></div>
       </div>
@@ -134,73 +132,167 @@
     <!-- ── SQL Editor Tab ── -->
     <div class="tab-panel" id="tab-sql">
       <div class="section-hdr" style="margin-bottom:16px">
-        <div><div class="section-title">SQL Editor</div><div class="section-sub">Run queries as admin or any DB user — non-admin users require password each session</div></div>
+        <div><div class="section-title">SQL Editor</div><div class="section-sub">Filter, search, insert, update or delete records — live PostgreSQL</div></div>
         <div id="current-user-badge" class="current-user-badge">Running as: <b>admin</b></div>
       </div>
 
-      <div class="sql-editor-card">
-        <div class="sql-editor-top">
-          <span class="sql-user-label">Run as:</span>
-          <div id="user-btns-wrap">
-            <button class="user-run-btn admin-btn selected" onclick="selectSqlUser('admin',this)">🔑 admin</button>
+      <!-- ── Operation Tabs ── -->
+      <div class="op-tabs-wrap" style="margin-bottom:14px">
+        <div class="op-tabs">
+          <button class="op-tab active" data-op="select" onclick="switchOpTab('select',this)">🔍 SELECT</button>
+          <button class="op-tab" data-op="insert" onclick="switchOpTab('insert',this)">➕ INSERT</button>
+          <button class="op-tab" data-op="update" onclick="switchOpTab('update',this)">✏️ UPDATE</button>
+          <button class="op-tab" data-op="delete" onclick="switchOpTab('delete',this)">🗑 DELETE</button>
+        </div>
+      </div>
+
+      <!-- ══ SELECT PANEL ══ -->
+      <div class="op-panel active" id="op-select">
+        <div class="filter-panel" id="filter-panel">
+
+          <!-- Table Selector -->
+          <div class="filter-top-row">
+            <span class="filter-section-label">Target Table:</span>
+            <div class="table-pills">
+              <button class="table-pill active" data-table="employees" onclick="selectTable('employees',this)">● employees</button>
+              <button class="table-pill" data-table="departments" onclick="selectTable('departments',this)">○ departments</button>
+              <button class="table-pill" data-table="salary_records" onclick="selectTable('salary_records',this)">○ salary_records</button>
+            </div>
           </div>
-          <button class="btn btn-green sql-run-main" onclick="runSql()">▶ Run  <kbd style="font-size:9px;opacity:.6">Ctrl+↵</kbd></button>
+
+          <!-- Column Selector -->
+          <div class="col-select-row" id="col-select-row">
+            <span class="filter-section-label" style="white-space:nowrap">Columns:</span>
+            <div class="col-pills-wrap">
+              <button class="col-all-btn active" id="col-all-btn" onclick="toggleAllCols(this)">◉ ALL</button>
+              <div class="col-pills" id="col-pills"></div>
+            </div>
+          </div>
+
+          <!-- Dynamic Filters -->
+          <div id="filter-fields" class="filter-fields-grid"></div>
+
+          <!-- Run Row -->
+          <div class="filter-actions-row">
+            <div class="sql-user-row">
+              <span class="filter-section-label" style="white-space:nowrap;margin-right:6px">Run as:</span>
+              <div id="user-btns-wrap">
+                <button class="user-run-btn admin-btn selected" onclick="selectSqlUser('admin',this)">🔑 admin</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-left:auto;flex-wrap:wrap">
+              <label class="autorun-label">
+                <span class="autorun-track-wrap">
+                  <input type="checkbox" id="autorun-chk" checked onchange="saveFilterState()"/>
+                  <span class="autorun-track"></span>
+                </span>
+                <span style="font-size:11px;color:var(--muted2)">Auto-run on filter changes</span>
+              </label>
+              <button class="btn btn-green" style="padding:8px 20px;font-size:13px;min-width:120px" onclick="runSqlFromFilter()">🔍 Run Search</button>
+            </div>
+          </div>
         </div>
 
-        <div class="sql-quick-btns">
-          <!-- SELECT group — always visible -->
-          <span style="font-size:10px;color:var(--muted);margin-right:4px">SELECT:</span>
-          <button class="quick-btn cat-select" onclick="setQuery('SELECT * FROM employees LIMIT 20;')">employees</button>
-          <button class="quick-btn cat-select" onclick="setQuery('SELECT * FROM departments;')">departments</button>
-          <button class="quick-btn cat-select" onclick="setQuery('SELECT * FROM salary_records LIMIT 20;')">salary_records</button>
-          <button class="quick-btn cat-select" onclick="setQuery('SELECT department, COUNT(*) as total,\n  ROUND(AVG(monthly_income)::numeric,0) as avg_income\nFROM employees\nGROUP BY department ORDER BY total DESC;')">dept summary</button>
-          <button class="quick-btn cat-select" onclick="setQuery('SELECT job_role, COUNT(*) as total,\n  ROUND(AVG(monthly_income)::numeric,0) as avg_income\nFROM employees\nGROUP BY job_role ORDER BY avg_income DESC;')">by job role</button>
-          <button class="quick-btn cat-select" onclick="setQuery('SELECT attrition, COUNT(*) as total,\n  ROUND(AVG(monthly_income)::numeric,0) as avg_income\nFROM employees GROUP BY attrition;')">attrition</button>
-          <button class="quick-btn cat-select" onclick="setQuery('SELECT gender, COUNT(*) as total FROM employees GROUP BY gender;')">gender split</button>
-
-          <!-- MODIFY group — always visible -->
-          <div class="quick-sep"></div>
-          <span style="font-size:10px;color:var(--muted);margin-right:4px">MODIFY:</span>
-          <button class="quick-btn cat-modify" onclick="setInsertTemplate()">INSERT employee</button>
-          <button class="quick-btn cat-modify" onclick="setUpdateTemplate()">UPDATE employee</button>
-          <button class="quick-btn cat-modify" onclick="setDeleteTemplate()">DELETE employee</button>
-
-          <!-- ADMIN-ONLY groups -->
-          <span class="admin-only-btns">
-            <div class="quick-sep"></div>
-            <span style="font-size:10px;color:var(--muted);margin-right:4px">ROLES:</span>
-            <button class="quick-btn cat-role" onclick="setCreateRoleTemplate()">CREATE ROLE</button>
-            <button class="quick-btn cat-role" onclick="setDropRoleTemplate()">DROP ROLE</button>
-            <div class="quick-sep"></div>
-            <span style="font-size:10px;color:var(--muted);margin-right:4px">USERS:</span>
-            <button class="quick-btn cat-user" onclick="setCreateUserTemplate()">CREATE USER</button>
-            <button class="quick-btn cat-user" onclick="setDropUserTemplate()">DROP USER</button>
-            <div class="quick-sep"></div>
-            <span style="font-size:10px;color:var(--muted);margin-right:4px">GRANTS:</span>
-            <button class="quick-btn cat-grant" onclick="setGrantTemplate()">GRANT priv</button>
-            <button class="quick-btn cat-grant" onclick="setRevokeTemplate()">REVOKE priv</button>
-            <button class="quick-btn cat-grant" onclick="setQuery('SELECT grantee, table_name, privilege_type\nFROM information_schema.role_table_grants\nWHERE table_schema=\'public\' AND grantee LIKE \'%_role\'\nORDER BY grantee, table_name;')">view grants</button>
-            <div class="quick-sep"></div>
-            <span style="font-size:10px;color:var(--muted);margin-right:4px">AUDIT:</span>
-            <button class="quick-btn cat-audit" onclick="setQuery('SELECT * FROM audit_log ORDER BY executed_at DESC LIMIT 20;')">audit_log</button>
-            <button class="quick-btn cat-audit" onclick="setQuery('SELECT username, action, table_name, COUNT(*) as total\nFROM audit_log\nGROUP BY username, action, table_name\nORDER BY total DESC;')">audit summary</button>
-          </span>
+        <!-- SQL Query Editor -->
+        <div class="sql-editor-card" style="margin-top:14px">
+          <div class="sql-editor-hdr">
+            <span style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-family:'JetBrains Mono',monospace">📄 SQL QUERY EDITOR</span>
+            <button class="btn btn-sm" onclick="clearSql()" style="font-size:11px">✕ Clear</button>
+          </div>
+          <textarea class="sql-textarea" id="sql-input"
+            placeholder="-- SQL auto-fills from filters above, or write your own query here&#10;-- Ctrl+Enter to run&#10;&#10;SELECT * FROM employees ORDER BY id LIMIT 10;"
+            onkeydown="sqlKeydown(event)"
+            oninput="onSqlManualEdit()"></textarea>
+          <div class="sql-editor-footer">
+            <button class="btn btn-green" style="padding:7px 22px;font-size:13px;font-weight:600" onclick="runSql()">▶ Run Query <kbd style="font-size:9px;opacity:.6;margin-left:4px">Ctrl+↵</kbd></button>
+            <span id="results-user-tag" style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace"></span>
+          </div>
+          <div class="sql-results" id="sql-results">
+            <div class="sql-results-msg" style="color:var(--muted)">Results appear here…</div>
+          </div>
+          <div class="results-footer" id="results-footer" style="display:none">
+            <span id="results-info"></span>
+            <span id="results-time" style="color:var(--muted)"></span>
+          </div>
         </div>
+      </div>
 
-        <textarea class="sql-textarea" id="sql-input"
-          placeholder="-- Write SQL here and press Ctrl+Enter to run
--- SELECT, INSERT, UPDATE, DELETE all supported
--- Changes are COMMITTED and reflected in real data
-
-SELECT * FROM employees LIMIT 10;"
-          onkeydown="sqlKeydown(event)"></textarea>
-
-        <div class="sql-results" id="sql-results">
-          <div class="sql-results-msg" style="color:var(--muted)">Results appear here…</div>
+      <!-- ══ INSERT PANEL ══ -->
+      <div class="op-panel" id="op-insert">
+        <div class="crud-panel">
+          <div class="crud-table-sel">
+            <span class="filter-section-label">Table:</span>
+            <div class="table-pills">
+              <button class="table-pill active" data-table="employees" onclick="selectCrudTable('insert','employees',this)">● employees</button>
+              <button class="table-pill" data-table="departments" onclick="selectCrudTable('insert','departments',this)">○ departments</button>
+              <button class="table-pill" data-table="salary_records" onclick="selectCrudTable('insert','salary_records',this)">○ salary_records</button>
+            </div>
+          </div>
+          <div class="crud-form-wrap">
+            <div class="crud-form" id="insert-form"></div>
+            <div class="crud-actions">
+              <button class="btn btn-green" style="padding:9px 28px;font-size:13px;font-weight:600" onclick="doInsert()">➕ Insert Record</button>
+              <div class="crud-status" id="insert-status"></div>
+            </div>
+          </div>
         </div>
-        <div class="results-footer" id="results-footer" style="display:none">
-          <span id="results-info"></span>
-          <span id="results-user-tag"></span>
+      </div>
+
+      <!-- ══ UPDATE PANEL ══ -->
+      <div class="op-panel" id="op-update">
+        <div class="crud-panel">
+          <div class="crud-table-sel">
+            <span class="filter-section-label">Table:</span>
+            <div class="table-pills">
+              <button class="table-pill active" data-table="employees" onclick="selectCrudTable('update','employees',this)">● employees</button>
+              <button class="table-pill" data-table="departments" onclick="selectCrudTable('update','departments',this)">○ departments</button>
+              <button class="table-pill" data-table="salary_records" onclick="selectCrudTable('update','salary_records',this)">○ salary_records</button>
+            </div>
+          </div>
+          <div class="crud-id-lookup">
+            <span class="filter-section-label" style="white-space:nowrap">Record ID:</span>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input class="filter-input" id="update-id-input" type="number" min="1" placeholder="Enter ID to update" style="max-width:180px"/>
+              <button class="btn btn-blue btn-sm" onclick="fetchRecordForUpdate()">🔎 Fetch Record</button>
+            </div>
+            <div class="crud-status" id="update-fetch-status" style="margin-top:6px"></div>
+          </div>
+          <div class="crud-form-wrap">
+            <div class="crud-form" id="update-form" style="display:none"></div>
+            <div class="crud-actions" id="update-actions" style="display:none">
+              <button class="btn btn-yellow" style="padding:9px 28px;font-size:13px;font-weight:600" onclick="doUpdate()">✏️ Update Record</button>
+              <div class="crud-status" id="update-status"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ DELETE PANEL ══ -->
+      <div class="op-panel" id="op-delete">
+        <div class="crud-panel">
+          <div class="crud-table-sel">
+            <span class="filter-section-label">Table:</span>
+            <div class="table-pills">
+              <button class="table-pill active" data-table="employees" onclick="selectCrudTable('delete','employees',this)">● employees</button>
+              <button class="table-pill" data-table="departments" onclick="selectCrudTable('delete','departments',this)">○ departments</button>
+              <button class="table-pill" data-table="salary_records" onclick="selectCrudTable('delete','salary_records',this)">○ salary_records</button>
+            </div>
+          </div>
+          <div class="crud-id-lookup">
+            <span class="filter-section-label" style="white-space:nowrap">Record ID to Delete:</span>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input class="filter-input" id="delete-id-input" type="number" min="1" placeholder="Enter ID" style="max-width:180px"/>
+              <button class="btn btn-blue btn-sm" onclick="fetchRecordForDelete()">🔎 Preview Record</button>
+            </div>
+            <div class="crud-status" id="delete-fetch-status" style="margin-top:6px"></div>
+          </div>
+          <div id="delete-preview-wrap" style="display:none;margin-top:12px">
+            <div class="delete-preview-card" id="delete-preview-card"></div>
+            <div class="crud-actions" style="margin-top:12px">
+              <button class="btn btn-red" style="padding:9px 28px;font-size:13px;font-weight:600" onclick="doDelete()">🗑 Confirm Delete</button>
+              <div class="crud-status" id="delete-status"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -210,9 +302,7 @@ SELECT * FROM employees LIMIT 10;"
       <div class="section-hdr" style="margin-bottom:20px">
         <div><div class="section-title">Users & Roles</div><div class="section-sub">Create or delete database users — changes reflect instantly in SQL Editor</div></div>
       </div>
-
       <div class="users-grid">
-        <!-- Left: Current Users -->
         <div class="users-card">
           <div class="users-card-header">
             <div class="users-card-title">Current DB Users</div>
@@ -222,8 +312,6 @@ SELECT * FROM employees LIMIT 10;"
             <div class="no-users" style="color:var(--muted)">Loading…</div>
           </div>
         </div>
-
-        <!-- Right: Create User -->
         <div class="users-card">
           <div class="users-card-header">
             <div class="users-card-title">Create New User</div>
@@ -231,31 +319,25 @@ SELECT * FROM employees LIMIT 10;"
           <div class="create-form">
             <div class="field-label">Username</div>
             <input class="field-input" id="new-username" placeholder="e.g. hr_manager1" style="margin-bottom:12px"/>
-
             <div class="field-label">Password</div>
             <div class="pw-wrap" style="margin-bottom:12px">
               <input class="field-input" id="new-password" type="password" placeholder="Strong password"/>
               <button class="pw-eye" type="button" onclick="toggleEye('new-password','eye-newpw')" id="eye-newpw">👁</button>
             </div>
-
             <div class="field-label">Assign Role</div>
             <select class="field-input" id="new-role" style="margin-bottom:12px">
               <option value="">Loading roles…</option>
             </select>
-
             <div class="field-label">Admin Password (to confirm)</div>
             <div class="pw-wrap" style="margin-bottom:12px">
               <input class="field-input" id="new-admin-pw" type="password" placeholder="Your admin password"/>
               <button class="pw-eye" type="button" onclick="toggleEye('new-admin-pw','eye-newadmin')" id="eye-newadmin">👁</button>
             </div>
-
             <button class="btn btn-green" style="width:100%;padding:10px;font-size:13px;" onclick="createUser()">+ Create User</button>
             <div class="modal-status" id="create-user-status" style="margin-top:8px;"></div>
           </div>
         </div>
       </div>
-
-      <!-- Roles info -->
       <div class="section-hdr" style="margin-bottom:12px">
         <div><div class="section-title">Available Roles</div><div class="section-sub">These roles and their privileges are managed from the Dashboard privilege matrix</div></div>
       </div>
@@ -275,39 +357,36 @@ SELECT * FROM employees LIMIT 10;"
       </div>
       <div class="audit-wrap">
         <table class="audit-table">
-          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Table</th><th>Detail</th></tr></thead>
+         <thead><tr><th>Date / Time</th><th>User</th><th>Action</th><th>Table</th><th>Detail</th></tr></thead>
           <tbody id="audit-tbody"></tbody>
         </table>
         <div class="audit-empty" id="audit-empty">Loading audit log…</div>
       </div>
     </div>
 
-  </div><!-- /main -->
-</div><!-- /app -->
+  </div>
+</div>
 
 <div class="toast-container" id="toasts"></div>
 
 <script>
-// Auto-detect: Vercel (same origin) vs local dev (localhost:8000)
 const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:8000'
-  : '';  // Same origin on Vercel — FastAPI serves from same domain
+  ? 'http://localhost:8000' : '';
 const CORRECT_ADMIN_PASSWORD = 'rafaysupadb2026';
 
 const TABLES = ['employees','departments','salary_records'];
 const PRIVS  = ['SELECT','INSERT','UPDATE','DELETE'];
 
 const ROLE_DESCRIPTIONS = {
-  'hr_manager_role':       {label:'HR Manager',            perms:'Full CRUD on employees & departments, Read salary'},
-  'finance_analyst_role':  {label:'Finance Analyst',       perms:'Read employees & departments, Full CRUD on salary_records'},
-  'it_admin_role':         {label:'IT Administrator',      perms:'Read-only on all tables including audit_log'},
-  'workforce_analyst_role':{label:'Workforce Analyst',     perms:'Read-only on employees, departments & salary_records'},
-  'hr_role':               {label:'HR',                    perms:'Manage employee records'},
-  'sales_role':            {label:'Sales',                 perms:'Read employees, manage sales data'},
-  'rd_role':               {label:'R&D',                   perms:'Read-only access to research data'},
-  'manager_role':          {label:'Manager',               perms:'Read employees & departments'},
+  'hr_manager_role':       {label:'HR Manager',        perms:'Full CRUD on employees & departments, Read salary'},
+  'finance_analyst_role':  {label:'Finance Analyst',   perms:'Read employees & departments, Full CRUD on salary_records'},
+  'it_admin_role':         {label:'IT Administrator',  perms:'Read-only on all tables including audit_log'},
+  'workforce_analyst_role':{label:'Workforce Analyst', perms:'Read-only on employees, departments & salary_records'},
+  'hr_role':               {label:'HR',                perms:'Manage employee records'},
+  'sales_role':            {label:'Sales',             perms:'Read employees, manage sales data'},
+  'rd_role':               {label:'R&D',               perms:'Read-only access to research data'},
+  'manager_role':          {label:'Manager',           perms:'Read employees & departments'},
 };
-
 const ROLE_COLORS = {
   'hr_manager_role':       {bg:'#061a10',border:'#00e676',text:'#00e676'},
   'hr_role':               {bg:'#061a10',border:'#00e676',text:'#00e676'},
@@ -323,7 +402,7 @@ const ROLE_COLORS = {
   'sales_manager_role':    {bg:'#061a10',border:'#00e676',text:'#00e676'},
 };
 
-// State
+// ── State ────────────────────────────────────────────────────────────
 let adminPassword    = '';
 let privData         = {};
 let dbUsers          = [];
@@ -335,98 +414,129 @@ let pendingPwResolve = null;
 let deleteTarget     = null;
 let activeTabName    = localStorage.getItem('hr_active_tab') || 'dashboard';
 
-// ── Matrix Rain ──────────────────────────────────────────────────────────
+// Filter state
+let currentTable    = 'employees';
+let filterManual    = false;
+let tableMeta       = {};        // cache: tableMeta['employees'] = {...}
+let selectedCols    = null;      // null = ALL, otherwise Set of col names
+let allColsActive   = true;
+
+// CRUD state
+let crudInsertTable = 'employees';
+let crudUpdateTable = 'employees';
+let crudDeleteTable = 'employees';
+let updateFetchedRecord = null;
+let deleteFetchedRecord = null;
+
+// ── Matrix Rain ───────────────────────────────────────────────────────
 (function(){
-  const canvas = document.getElementById('matrix-bg');
-  const ctx    = canvas.getContext('2d');
-  let W, H, cols, drops;
-  const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
-  function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; cols=Math.floor(W/16); drops=Array.from({length:cols},()=>Math.random()*-100); }
+  const canvas=document.getElementById('matrix-bg'),ctx=canvas.getContext('2d');
+  let W,H,cols,drops;
+  const chars='アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;cols=Math.floor(W/16);drops=Array.from({length:cols},()=>Math.random()*-100);}
   function draw(){
-    ctx.fillStyle='rgba(6,10,14,0.06)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(6,10,14,0.06)';ctx.fillRect(0,0,W,H);
     ctx.font='14px JetBrains Mono,monospace';
     for(let i=0;i<cols;i++){
       const c=chars[Math.floor(Math.random()*chars.length)];
       const bright=drops[i]>0&&(drops[i]%1<0.05);
       ctx.fillStyle=bright?'#00ff88':`rgba(0,200,100,${Math.random()*.6+.1})`;
       ctx.fillText(c,i*16,drops[i]*16);
-      if(drops[i]*16>H&&Math.random()>.975) drops[i]=0;
+      if(drops[i]*16>H&&Math.random()>.975)drops[i]=0;
       drops[i]+=.4+Math.random()*.3;
     }
   }
-  resize(); window.addEventListener('resize',resize); setInterval(draw,50);
+  resize();window.addEventListener('resize',resize);setInterval(draw,50);
 })();
 
-// ── Eye toggle ───────────────────────────────────────────────────────
-function toggleEye(inputId, btnId){
-  const input = document.getElementById(inputId);
-  const btn   = document.getElementById(btnId);
-  if(input.type === 'password'){
-    input.type = 'text';
-    btn.textContent = '🙈';
-  } else {
-    input.type = 'password';
-    btn.textContent = '👁';
-  }
+// ── Utilities ─────────────────────────────────────────────────────────
+function toggleEye(inputId,btnId){
+  const input=document.getElementById(inputId),btn=document.getElementById(btnId);
+  if(input.type==='password'){input.type='text';btn.textContent='🙈';}
+  else{input.type='password';btn.textContent='👁';}
 }
-
-// ── Utilities ────────────────────────────────────────────────────────
 function toast(msg,type='info'){
-  const el=document.createElement('div'); el.className=`toast ${type}`;
+  const el=document.createElement('div');el.className=`toast ${type}`;
   const icons={grant:'✓',revoke:'✗',info:'ℹ',err:'⚠'};
   el.innerHTML=`<span>${icons[type]||'·'}</span><span>${escHtml(msg)}</span>`;
   document.getElementById('toasts').appendChild(el);
-  setTimeout(()=>el.style.opacity='0',2800); setTimeout(()=>el.remove(),3100);
+  setTimeout(()=>el.style.opacity='0',2800);setTimeout(()=>el.remove(),3100);
 }
 function setLog(sql,type='info'){
-  const log=document.getElementById('sql-log'); log.className=`sql-log ${type}`;
+  const log=document.getElementById('sql-log');log.className=`sql-log ${type}`;
   document.getElementById('sql-log-text').textContent=sql;
 }
 function animateNum(el,target){
   const t0=performance.now();
-  function step(t){ const p=Math.min((t-t0)/900,1),e=1-Math.pow(1-p,3); el.textContent=Math.floor(e*target).toLocaleString(); if(p<1)requestAnimationFrame(step); }
+  function step(t){const p=Math.min((t-t0)/900,1),e=1-Math.pow(1-p,3);el.textContent=Math.floor(e*target).toLocaleString();if(p<1)requestAnimationFrame(step);}
   requestAnimationFrame(step);
 }
 function loading(show,msg='Loading…'){
   document.getElementById('loading-msg').textContent=msg;
   document.getElementById('loading-overlay').style.display=show?'flex':'none';
 }
-function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-function switchTab(name,btn){
+function updateAuditTabState(){
+  const auditBtn=document.getElementById('audit-tab-btn');
+  if(!auditBtn)return;
+  if(selectedSqlUser==='admin'){
+    auditBtn.disabled=false;
+    auditBtn.style.opacity='1';
+    auditBtn.style.cursor='pointer';
+    auditBtn.title='';
+  }else{
+    auditBtn.disabled=true;
+    auditBtn.style.opacity='0.35';
+    auditBtn.style.cursor='not-allowed';
+    auditBtn.title='Only admin can view Audit Log';
+    // agar audit tab active hai aur user switch hua toh dashboard pe wapas
+    if(activeTabName==='audit'){
+      const dashBtn=document.querySelector('.tab-btn[onclick*="dashboard"]');
+      if(dashBtn)switchTab('dashboard',dashBtn);
+    }
+  }
+}
+
+function switchTab(name,btn){// ── Tab switching ─────────────────────────────────────────────────────
+
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   btn.classList.add('active');
-  activeTabName = name;
-  localStorage.setItem('hr_active_tab', name);
-  if(name==='users') loadUsersTab();
-  if(name==='audit') loadAudit();
+  activeTabName=name;
+  localStorage.setItem('hr_active_tab',name);
+  if(name==='sql'){restoreFilterState();}
+  if(name==='users')loadUsersTab();
+  if(name==='audit')loadAudit();
 }
 
-// ── Login ────────────────────────────────────────────────────────────
-document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+function switchOpTab(op,btn){
+  document.querySelectorAll('.op-tab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.op-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('op-'+op).classList.add('active');
+  if(op==='insert')renderInsertForm(crudInsertTable);
+  if(op==='update')renderUpdateIdRow(crudUpdateTable);
+  if(op==='delete')renderDeleteIdRow(crudDeleteTable);
+}
+
+// ── Login ─────────────────────────────────────────────────────────────
+document.getElementById('l-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 async function doLogin(){
   const st=document.getElementById('login-status');
   const pw=document.getElementById('l-pass').value.trim();
-  if(!pw){ st.className='login-status error'; st.textContent='Enter admin password'; return; }
-
-  if(pw !== CORRECT_ADMIN_PASSWORD){
-    st.className='login-status error';
-    st.textContent='Wrong admin password. Access denied.';
-    return;
-  }
-
-  st.className='login-status'; st.textContent='Connecting…';
+  if(!pw){st.className='login-status error';st.textContent='Enter admin password';return;}
+  if(pw!==CORRECT_ADMIN_PASSWORD){st.className='login-status error';st.textContent='Wrong admin password. Access denied.';return;}
+  st.className='login-status';st.textContent='Connecting…';
   try{
-    const res=await fetch(`${API}/api/health`);
-    const d=await res.json();
+    const res=await fetch(`${API}/api/health`),d=await res.json();
     if(d.status==='ok'){
-      adminPassword = pw;
-      localStorage.setItem('hr_admin_pw', pw);
-      sessionStorage.setItem('hr_session_alive', '1');
-      st.className='login-status ok'; st.textContent='Connected ✓';
+      adminPassword=pw;
+      localStorage.setItem('hr_admin_pw',pw);
+      sessionStorage.setItem('hr_session_alive','1');
+      st.className='login-status ok';st.textContent='Connected ✓';
       setTimeout(async()=>{
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='block';
@@ -434,89 +544,278 @@ async function doLogin(){
         await refreshAll();
         loading(false);
       },400);
-    } else {
-      st.className='login-status error'; st.textContent='DB error';
-    }
-  } catch(e){
-    st.className='login-status error'; st.textContent='Cannot reach backend (localhost:8000)';
-  }
+    }else{st.className='login-status error';st.textContent='DB error';}
+  }catch(e){st.className='login-status error';st.textContent='Cannot reach backend (localhost:8000)';}
 }
 
 function doLogout(){
-  adminPassword = '';
-  localStorage.removeItem('hr_admin_pw');
-  localStorage.removeItem('hr_active_tab');
+  adminPassword='';localStorage.removeItem('hr_admin_pw');
+  localStorage.removeItem('hr_active_tab');localStorage.removeItem('hr_filter_state');
   sessionStorage.removeItem('hr_session_alive');
-  userPasswords={};
-  dbUsers=[];
-  selectedSqlUser='admin';
-  activeTabName='dashboard';
+  userPasswords={};dbUsers=[];selectedSqlUser='admin';activeTabName='dashboard';
+  updateAuditTabState();
   document.getElementById('app').style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('l-pass').value='';
   document.getElementById('login-status').textContent='';
-  ['l-pass','pw-modal-input','del-modal-pw','new-password','new-admin-pw'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el) el.type='password';
-  });
 }
 
-// ── Load all data ────────────────────────────────────────────────────
 async function refreshAll(){
-  await Promise.all([loadStats(), loadPrivileges(), loadDbUsers(), loadDbRoles()]);
-  if(activeTabName==='users') { renderUsersList(); renderRolesList(); }
-  if(activeTabName==='audit') { await loadAudit(); }
-  setLog('Data refreshed','info'); toast('Refreshed','info');
+  await Promise.all([loadStats(),loadPrivileges(),loadDbUsers(),loadDbRoles()]);
+  if(activeTabName==='users'){renderUsersList();renderRolesList();}
+  if(activeTabName==='audit'){await loadAudit();}
+  setLog('Data refreshed','info');toast('Refreshed','info');
 }
 
+function crudDatalistField(id,label,options,placeholder){
+  const opts=options.map(o=>`<option value="${escHtml(String(o))}"></option>`).join('');
+  return `<div class="crud-field">
+    <label class="crud-field-label">${escHtml(label)}</label>
+    <input class="filter-input" id="${id}" list="${id}_list" placeholder="${escHtml(placeholder)}"/>
+    <datalist id="${id}_list">${opts}</datalist>
+  </div>`;
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────
 async function loadStats(){
   try{
-    const res=await fetch(`${API}/api/stats`); const d=await res.json();
+    const res=await fetch(`${API}/api/stats`),d=await res.json();
     animateNum(document.getElementById('s-total'),d.total_employees);
     document.getElementById('s-depts').textContent=d.departments.length;
     const avg=d.departments.reduce((a,b)=>a+b.avg_sal,0)/(d.departments.length||1);
     document.getElementById('s-avg').textContent='$'+Math.round(avg).toLocaleString();
     const max=Math.max(...d.departments.map(x=>x.total));
-    const tbody=document.getElementById('dept-tbody'); tbody.innerHTML='';
+    const tbody=document.getElementById('dept-tbody');tbody.innerHTML='';
     d.departments.forEach(dept=>{
       const pct=Math.round((dept.total/max)*100);
       const tr=document.createElement('tr');
       tr.innerHTML=`<td style="font-weight:500">${escHtml(dept.dept)}</td><td>${dept.total.toLocaleString()}</td><td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" data-pct="${pct}"></div></div><div class="bar-val">${pct}%</div></div></td><td style="color:var(--yellow)">$${dept.avg_sal.toLocaleString()}</td>`;
       tbody.appendChild(tr);
     });
-    setTimeout(()=>{ document.querySelectorAll('.bar-fill').forEach(b=>{ b.style.width=b.dataset.pct+'%'; }); },150);
-  } catch(e){ console.warn('loadStats error',e); }
+    setTimeout(()=>{document.querySelectorAll('.bar-fill').forEach(b=>{b.style.width=b.dataset.pct+'%';});},150);
+  }catch(e){console.warn('loadStats error',e);}
 }
 
 async function loadDbUsers(){
   try{
-    const res=await fetch(`${API}/api/users`); dbUsers=await res.json();
+    const res=await fetch(`${API}/api/users`);dbUsers=await res.json();
     document.getElementById('s-users').textContent=dbUsers.length;
     rebuildUserButtons();
-  } catch(e){ console.warn('loadDbUsers error',e); }
+  }catch(e){console.warn('loadDbUsers error',e);}
 }
 
 async function loadDbRoles(){
   try{
-    const res=await fetch(`${API}/api/roles`); dbRoles=await res.json();
+    const res=await fetch(`${API}/api/roles`);dbRoles=await res.json();
     const sel=document.getElementById('new-role');
     sel.innerHTML=dbRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
-  } catch(e){ console.warn('loadDbRoles error',e); }
+  }catch(e){console.warn('loadDbRoles error',e);}
 }
 
 async function loadPrivileges(){
   try{
-    const res=await fetch(`${API}/api/privileges`); privData=await res.json();
+    const res=await fetch(`${API}/api/privileges`);privData=await res.json();
     renderPrivTable();
-  } catch(e){ console.warn('loadPrivileges error',e); }
+  }catch(e){console.warn('loadPrivileges error',e);}
 }
 
-// ── User Buttons (SQL Editor) ────────────────────────────────────────
+// ── Table Meta ────────────────────────────────────────────────────────
+async function fetchTableMeta(table){
+  if(tableMeta[table]) return tableMeta[table];
+  try{
+    const res=await fetch(`${API}/api/table-meta/${table}`);
+    const d=await res.json();
+    tableMeta[table]=d;
+    return d;
+  }catch(e){console.warn('fetchTableMeta error',e);return {};}
+}
+
+// ── Column Selector ───────────────────────────────────────────────────
+function renderColPills(cols){
+  const wrap=document.getElementById('col-pills');
+  const allBtn=document.getElementById('col-all-btn');
+  wrap.innerHTML='';
+  cols.forEach(col=>{
+    const btn=document.createElement('button');
+    btn.className='col-pill'+((!allColsActive&&selectedCols&&selectedCols.has(col))?' active':'');
+    btn.textContent=col;
+    btn.dataset.col=col;
+    btn.onclick=()=>toggleColPill(col,btn);
+    wrap.appendChild(btn);
+  });
+  allBtn.className='col-all-btn'+(allColsActive?' active':'');
+}
+
+function toggleAllCols(btn){
+  allColsActive=true;
+  selectedCols=null;
+  document.getElementById('col-all-btn').className='col-all-btn active';
+  document.querySelectorAll('.col-pill').forEach(b=>b.classList.remove('active'));
+  onFilterChange();
+}
+
+function toggleColPill(col,btn){
+  allColsActive=false;
+  document.getElementById('col-all-btn').className='col-all-btn';
+  if(!selectedCols) selectedCols=new Set();
+  if(selectedCols.has(col)){selectedCols.delete(col);btn.classList.remove('active');}
+  else{selectedCols.add(col);btn.classList.add('active');}
+  if(selectedCols.size===0){toggleAllCols(document.getElementById('col-all-btn'));return;}
+  onFilterChange();
+}
+
+// ── Filter Definitions (dynamic) ──────────────────────────────────────
+function getFilterDefs(table, meta){
+  if(table==='employees'){
+    return [
+      {id:'f_id',       label:'DB ID',       type:'select', col:'id',           opts:['All',...(meta.ids||[])]},
+      {id:'f_empno',    label:'Emp Number',  type:'select', col:'emp_id',       opts:['All',...(meta.emp_ids||[])]},
+      {id:'f_age',      label:'Age',         type:'select', col:'age',          opts:['All',...(meta.ages||[])]},
+      {id:'f_agegroup', label:'Age Group',   type:'select', col:'age_group',    opts:['All',...(meta.age_groups||[])]},
+      {id:'f_attrition',label:'Attrition',   type:'select', col:'attrition',    opts:['All',...(meta.attritions||[])]},
+      {id:'f_dept',     label:'Department',  type:'select', col:'department',   opts:['All',...(meta.departments||[])]},
+      {id:'f_gender',   label:'Gender',      type:'select', col:'gender',       opts:['All',...(meta.genders||[])]},
+      {id:'f_jobrole',  label:'Job Role',    type:'select', col:'job_role',     opts:['All',...(meta.job_roles||[])]},
+      {id:'f_slab',     label:'Salary Slab', type:'select', col:'salary_slab',  opts:['All',...(meta.salary_slabs||[])]},
+    ];
+
+  } else if(table==='departments'){
+    return [
+      {id:'f_id',       label:'DB ID',            type:'select', col:'id',              opts:['All',...(meta.ids||[])]},
+      {id:'f_deptname', label:'Department Name',  type:'select', col:'dept_name',       opts:['All',...(meta.dept_names||[])]},
+    ];
+  } else if(table==='salary_records'){
+    return [
+      {id:'f_id',       label:'DB ID',            type:'select', col:'id',              opts:['All',...(meta.ids||[])]},
+      {id:'f_s_empno',  label:'Emp Number',       type:'select', col:'emp_id',          opts:['All',...(meta.emp_ids||[])]},
+      {id:'f_s_slab',   label:'Salary Slab',      type:'select', col:'salary_slab',     opts:['All',...(meta.salary_slabs||[])]},
+      {id:'f_s_date',   label:'Recorded On',      type:'select', col:'recorded_on',     opts:['All',...(meta.recorded_ons||[])]},
+    ];
+  }
+  return [];
+}
+
+function renderFilterFields(table){
+  const meta=tableMeta[table]||{};
+  const defs=getFilterDefs(table,meta);
+  const container=document.getElementById('filter-fields');
+  container.innerHTML=defs.map(f=>{
+    const opts=f.opts.map(o=>`<option value="${escHtml(String(o))}">${escHtml(String(o))}</option>`).join('');
+    return `<div class="filter-field">
+      <label class="filter-label">${escHtml(f.label)}</label>
+      <select class="filter-input" id="${f.id}" onchange="onFilterChange()">${opts}</select>
+    </div>`;
+  }).join('');
+  // Col pills
+  const cols=meta.columns||[];
+  renderColPills(cols);
+}
+
+async function initTableMeta(table){
+  await fetchTableMeta(table);
+  renderFilterFields(table);
+  document.getElementById('sql-input').value=buildQuery();
+}
+
+// ── Query Builder ─────────────────────────────────────────────────────
+function buildQuery(){
+  const meta=tableMeta[currentTable]||{};
+  const defs=getFilterDefs(currentTable,meta);
+  const conditions=[];
+  for(const f of defs){
+    const el=document.getElementById(f.id);
+    if(!el)continue;
+    const val=el.value.trim();
+    if(!val||val==='All')continue;
+    conditions.push(`${f.col} = '${val.replace(/'/g,"''")}'`);
+  }
+  const where=conditions.length?`\nWHERE ${conditions.join('\n  AND ')}`:'';
+  // Column selection
+  let colClause='*';
+  if(!allColsActive&&selectedCols&&selectedCols.size>0){
+    colClause=[...selectedCols].join(', ');
+  }
+  return `SELECT ${colClause} FROM ${currentTable}${where}\nORDER BY id\nLIMIT 50;`;
+}
+
+function onFilterChange(){
+  filterManual=false;
+  const q=buildQuery();
+  document.getElementById('sql-input').value=q;
+  saveFilterState();
+  const autorun=document.getElementById('autorun-chk');
+  if(autorun&&autorun.checked)runSqlFromFilter();
+}
+
+function onSqlManualEdit(){filterManual=true;}
+
+function runSqlFromFilter(){
+  if(!filterManual)document.getElementById('sql-input').value=buildQuery();
+  runSql();
+}
+
+function clearSql(){document.getElementById('sql-input').value='';filterManual=false;}
+
+async function selectTable(table,btn){
+  currentTable=table;
+  allColsActive=true;selectedCols=null;
+  document.querySelectorAll('#op-select .table-pill').forEach(b=>{
+    b.classList.remove('active');b.textContent='○ '+b.dataset.table;
+  });
+  btn.classList.add('active');btn.textContent='● '+table;
+  filterManual=false;
+  await initTableMeta(table);
+  saveFilterState();
+  const autorun=document.getElementById('autorun-chk');
+  if(autorun&&autorun.checked)runSqlFromFilter();
+}
+
+function saveFilterState(){
+  try{
+    const state={table:currentTable,autorun:document.getElementById('autorun-chk')?.checked};
+    const meta=tableMeta[currentTable]||{};
+    const defs=getFilterDefs(currentTable,meta);
+    state.filters={};
+    for(const f of defs){
+      const el=document.getElementById(f.id);
+      if(el)state.filters[f.id]=el.value;
+    }
+    localStorage.setItem('hr_filter_state',JSON.stringify(state));
+  }catch(e){}
+}
+
+async function restoreFilterState(){
+  try{
+    const raw=localStorage.getItem('hr_filter_state');
+    if(raw){
+      const state=JSON.parse(raw);
+      if(state.table){
+        currentTable=state.table;
+        document.querySelectorAll('#op-select .table-pill').forEach(b=>{
+          b.classList.remove('active');b.textContent='○ '+b.dataset.table;
+          if(b.dataset.table===currentTable){b.classList.add('active');b.textContent='● '+currentTable;}
+        });
+      }
+      const chk=document.getElementById('autorun-chk');
+      if(chk&&state.autorun!==undefined)chk.checked=state.autorun;
+      await initTableMeta(currentTable);
+      if(state.filters){
+        for(const[id,val]of Object.entries(state.filters)){
+          const el=document.getElementById(id);if(el)el.value=val;
+        }
+      }
+    }else{
+      await initTableMeta(currentTable);
+    }
+    document.getElementById('sql-input').value=buildQuery();
+  }catch(e){await initTableMeta(currentTable);}
+}
+
+// ── User Buttons ──────────────────────────────────────────────────────
 function rebuildUserButtons(){
   const wrap=document.getElementById('user-btns-wrap');
   const adminBtn=wrap.querySelector('.admin-btn');
-  wrap.innerHTML=''; wrap.appendChild(adminBtn);
-
+  wrap.innerHTML='';wrap.appendChild(adminBtn);
   dbUsers.forEach(u=>{
     const btn=document.createElement('button');
     btn.className='user-run-btn';
@@ -525,29 +824,19 @@ function rebuildUserButtons(){
     btn.onclick=()=>selectSqlUser(u.username,btn);
     wrap.appendChild(btn);
   });
-
   if(selectedSqlUser!=='admin'){
     const allBtns=wrap.querySelectorAll('.user-run-btn');
     let found=false;
-    allBtns.forEach(b=>{ if(b.textContent.includes(selectedSqlUser)){ b.classList.add('selected'); found=true; } });
-    if(!found){ selectedSqlUser='admin'; adminBtn.classList.add('selected'); }
-  } else {
-    adminBtn.classList.add('selected');
-  }
+    allBtns.forEach(b=>{if(b.textContent.includes(selectedSqlUser)){b.classList.add('selected');found=true;}});
+    if(!found){selectedSqlUser='admin';adminBtn.classList.add('selected');}
+  }else{adminBtn.classList.add('selected');}
+  updateAuditTabState();
 }
 
-// ── Show/hide admin-only quick buttons ───────────────────────────────
-function updateQuickBtnsVisibility(){
-  const adminOnlySpan = document.querySelector('.admin-only-btns');
-  if(adminOnlySpan){
-    adminOnlySpan.style.display = selectedSqlUser === 'admin' ? '' : 'none';
-  }
-}
-
-// ── Password Modal ───────────────────────────────────────────────────
+// ── Password Modal ────────────────────────────────────────────────────
 function showPwModal(username){
   return new Promise(resolve=>{
-    pendingPwUser=username; pendingPwResolve=resolve;
+    pendingPwUser=username;pendingPwResolve=resolve;
     document.getElementById('pw-modal-sub').textContent=`Enter password for user: ${username}`;
     document.getElementById('pw-modal-input').value='';
     document.getElementById('pw-modal-input').type='password';
@@ -559,279 +848,160 @@ function showPwModal(username){
 }
 function closePwModal(){
   document.getElementById('pw-modal').style.display='none';
-  if(pendingPwResolve) pendingPwResolve(null);
-  pendingPwResolve=null; pendingPwUser=null;
+  if(pendingPwResolve)pendingPwResolve(null);
+  pendingPwResolve=null;pendingPwUser=null;
 }
 async function confirmPwModal(){
   const pw=document.getElementById('pw-modal-input').value;
-  if(!pw){ document.getElementById('pw-modal-status').className='modal-status err'; document.getElementById('pw-modal-status').textContent='Enter password'; return; }
-  document.getElementById('pw-modal-status').className='modal-status'; document.getElementById('pw-modal-status').textContent='Verifying…';
-
-  // Admin user — verify against hardcoded password only (no API call needed)
-  if(pendingPwUser === 'admin'){
-    if(pw === CORRECT_ADMIN_PASSWORD){
+  if(!pw){document.getElementById('pw-modal-status').className='modal-status err';document.getElementById('pw-modal-status').textContent='Enter password';return;}
+  document.getElementById('pw-modal-status').className='modal-status';document.getElementById('pw-modal-status').textContent='Verifying…';
+  if(pendingPwUser==='admin'){
+    if(pw===CORRECT_ADMIN_PASSWORD){
       document.getElementById('pw-modal').style.display='none';
-      if(pendingPwResolve) pendingPwResolve(pw);
-      pendingPwResolve=null; pendingPwUser=null;
-    } else {
+      if(pendingPwResolve)pendingPwResolve(pw);
+      pendingPwResolve=null;pendingPwUser=null;
+    }else{
       document.getElementById('pw-modal-status').className='modal-status err';
       document.getElementById('pw-modal-status').textContent='Wrong admin password. Try again.';
     }
     return;
   }
-
-  // Non-admin users — verify via API
   try{
     const res=await fetch(`${API}/api/verify`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:pendingPwUser,password:pw})});
     const d=await res.json();
     if(d.ok){
       userPasswords[pendingPwUser]=pw;
       document.getElementById('pw-modal').style.display='none';
-      if(pendingPwResolve) pendingPwResolve(pw);
-      pendingPwResolve=null; pendingPwUser=null;
-    } else {
+      if(pendingPwResolve)pendingPwResolve(pw);
+      pendingPwResolve=null;pendingPwUser=null;
+    }else{
       document.getElementById('pw-modal-status').className='modal-status err';
       document.getElementById('pw-modal-status').textContent='Wrong password. Try again.';
     }
-  } catch(e){
+  }catch(e){
     document.getElementById('pw-modal-status').className='modal-status err';
     document.getElementById('pw-modal-status').textContent='Connection error.';
   }
 }
-document.getElementById('pw-modal-input').addEventListener('keydown',e=>{ if(e.key==='Enter') confirmPwModal(); });
+document.getElementById('pw-modal-input').addEventListener('keydown',e=>{if(e.key==='Enter')confirmPwModal();});
 
-// ── SQL User Select — ask password only if not cached ────────────────
-async function selectSqlUser(user, btn){
-  // ALWAYS ask password on every switch — no caching bypass
-  const pw = await showPwModal(user);
-  if(!pw){ toast('Authentication cancelled','info'); return; }
-
-  // Store for runSql() to use (non-admin users need it)
-  if(user !== 'admin'){
-    userPasswords[user] = pw;
-  }
-
-  selectedSqlUser = user;
+async function selectSqlUser(user,btn){
+  const pw=await showPwModal(user);
+  if(!pw){toast('Authentication cancelled','info');return;}
+  if(user!=='admin')userPasswords[user]=pw;
+  selectedSqlUser=user;
   document.querySelectorAll('.user-run-btn').forEach(b=>b.classList.remove('selected'));
   btn.classList.add('selected');
   document.getElementById('current-user-badge').innerHTML=`Running as: <b>${escHtml(user)}</b>`;
-  updateQuickBtnsVisibility();
-  toast(`Authenticated as ${user}`, 'grant');
-}
-
-// ── SQL Query Templates ──────────────────────────────────────────────
-function setQuery(q){ document.getElementById('sql-input').value=q; document.getElementById('sql-input').focus(); }
-
-function setInsertTemplate(){
-  setQuery(`INSERT INTO employees (
-  emp_id, age, age_group, attrition, business_travel, daily_rate,
-  department, distance_from_home, education, education_field,
-  employee_number, environment_satisfaction, gender, hourly_rate,
-  job_involvement, job_level, job_role, job_satisfaction,
-  marital_status, monthly_income, salary_slab, monthly_rate,
-  num_companies_worked, overtime, percent_salary_hike,
-  performance_rating, relationship_satisfaction, standard_hours,
-  stock_option_level, total_working_years, training_times_last_year,
-  work_life_balance, years_at_company, years_in_current_role,
-  years_since_last_promotion, years_with_curr_manager
-) VALUES (
-  'RM25009', 30, '25-34', 'No', 'Travel_Rarely', 800,
-  'Sales', 5, 3, 'Life Sciences',
-  9999, 3, 'Male', 60,
-  3, 2, 'Sales Executive', 3,
-  'Single', 5000.00, '3k-6k', 15000,
-  2, 'No', 12,
-  3, 3, 80,
-  1, 6, 2,
-  3, 3, 2,
-  1, 3
-);`);
-}
-
-function setUpdateTemplate(){
-  setQuery(`UPDATE employees
-SET monthly_income = 6500.00,
-    job_level = 3,
-    years_in_current_role = 4
-WHERE emp_id = 'RM25009';
-
-SELECT emp_id, monthly_income, job_level, years_in_current_role
-FROM employees WHERE emp_id = 'RM25009';`);
-}
-
-function setDeleteTemplate(){
-  setQuery(`DELETE FROM employees WHERE emp_id = 'RM25009';
-
-SELECT COUNT(*) FROM employees WHERE emp_id = 'RM25009';`);
-}
-
-function setCreateRoleTemplate(){
-  setQuery(`CREATE ROLE my_new_role;
-
-GRANT SELECT ON employees TO my_new_role;
-GRANT SELECT ON departments TO my_new_role;
-
-SELECT rolname FROM pg_roles WHERE rolname = 'my_new_role';`);
-}
-
-function setDropRoleTemplate(){
-  setQuery(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM my_new_role;
-
-REVOKE my_new_role FROM username_here;
-
-DROP ROLE IF EXISTS my_new_role;
-
-SELECT rolname FROM pg_roles WHERE rolname = 'my_new_role';`);
-}
-
-function setCreateUserTemplate(){
-  setQuery(`CREATE USER new_user WITH PASSWORD 'StrongPass@123';
-
-GRANT hr_manager_role TO new_user;
-
-ALTER USER new_user SET search_path TO public;
-
-SELECT usename, usesuper FROM pg_user WHERE usename = 'new_user';`);
-}
-
-function setDropUserTemplate(){
-  setQuery(`REVOKE hr_manager_role FROM username_here;
-
-REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM username_here;
-
-DROP USER IF EXISTS username_here;
-
-SELECT usename FROM pg_user WHERE usename = 'username_here';`);
-}
-
-function setGrantTemplate(){
-  setQuery(`GRANT SELECT ON employees TO hr_manager_role;
-GRANT INSERT ON employees TO hr_manager_role;
-GRANT UPDATE ON employees TO hr_manager_role;
-GRANT DELETE ON employees TO hr_manager_role;
-
-GRANT ALL PRIVILEGES ON salary_records TO finance_analyst_role;
-
-SELECT grantee, table_name, privilege_type
-FROM information_schema.role_table_grants
-WHERE grantee = 'hr_manager_role'
-ORDER BY table_name, privilege_type;`);
-}
-
-function setRevokeTemplate(){
-  setQuery(`REVOKE DELETE ON employees FROM hr_manager_role;
-REVOKE INSERT ON salary_records FROM workforce_analyst_role;
-
-REVOKE ALL PRIVILEGES ON departments FROM it_admin_role;
-
-SELECT grantee, table_name, privilege_type
-FROM information_schema.role_table_grants
-WHERE grantee = 'hr_manager_role'
-ORDER BY table_name, privilege_type;`);
+  toast(`Authenticated as ${user}`,'grant');
+  updateAuditTabState();
 }
 
 function sqlKeydown(e){
-  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); runSql(); }
-  if(e.key==='Tab'){ e.preventDefault(); const ta=e.target,s=ta.selectionStart; ta.value=ta.value.substring(0,s)+'  '+ta.value.substring(ta.selectionEnd); ta.selectionStart=ta.selectionEnd=s+2; }
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();runSql();}
+  if(e.key==='Tab'){e.preventDefault();const ta=e.target,s=ta.selectionStart;ta.value=ta.value.substring(0,s)+'  '+ta.value.substring(ta.selectionEnd);ta.selectionStart=ta.selectionEnd=s+2;}
 }
 
-// ── Run SQL ──────────────────────────────────────────────────────────
+// ── Run SQL ───────────────────────────────────────────────────────────
 async function runSql(){
   const sql=document.getElementById('sql-input').value.trim();
-  if(!sql){ toast('Write a query first','err'); return; }
-
+  if(!sql){toast('Write a query first','err');return;}
   const resultsEl=document.getElementById('sql-results');
   const footerEl=document.getElementById('results-footer');
   resultsEl.innerHTML=`<div class="sql-results-msg" style="color:var(--muted)">Running…</div>`;
   footerEl.style.display='none';
+  const t0=Date.now();
 
-  let endpoint, body;
+  let endpoint,body;
   if(selectedSqlUser==='admin'){
-    endpoint='/api/admin/sql';
-    body={sql, admin_password:adminPassword};
-  } else {
+    endpoint='/api/admin/sql';body={sql,admin_password:adminPassword};
+  }else{
     const pw=userPasswords[selectedSqlUser];
-    if(!pw){ toast('No password cached — click user button to authenticate','err'); return; }
-    endpoint='/api/sql';
-    body={username:selectedSqlUser, password:pw, sql};
+    if(!pw){toast('No password cached — click user button to authenticate','err');return;}
+    endpoint='/api/sql';body={username:selectedSqlUser,password:pw,sql};
   }
-
   try{
     const res=await fetch(`${API}${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     const results=data.results||[data];
-    renderSqlResults(results);
-  } catch(e){
+    renderSqlResults(results,Date.now()-t0);
+  }catch(e){
     resultsEl.innerHTML=`<div class="sql-results-msg err">⚠ Connection error — is backend running?</div>`;
     toast('Connection error','err');
   }
 }
 
-function renderSqlResults(results){
+function renderSqlResults(results,ms){
   const resultsEl=document.getElementById('sql-results');
   const footerEl=document.getElementById('results-footer');
   resultsEl.innerHTML='';
   let totalRows=0;
-
   results.forEach(r=>{
     if(!r.ok){
-      const isPerm=r.type==='permission'||String(r.error).toLowerCase().includes('permission');
+      const isNotFound=r.type==='not_found';
+      const isPerm=r.type==='permission'||String(r.error||'').toLowerCase().includes('permission');
       const div=document.createElement('div');
       div.className='perm-banner';
-      div.innerHTML=`<div class="perm-banner-icon">${isPerm?'🔒':'⚠️'}</div><div><div class="perm-banner-title">${isPerm?'Permission Denied':'Query Error'}</div><div class="perm-banner-detail">${escHtml(r.detail||r.error||'Unknown error')}</div></div>`;
+      let icon=isPerm?'🔒':isNotFound?'🔍':'⚠️';
+      let title=isPerm?'Permission Denied':isNotFound?'Record Not Found':'Query Error';
+      let color=isPerm?'var(--red)':isNotFound?'var(--yellow)':'var(--red)';
+      let borderColor=isPerm?'rgba(255,82,82,0.25)':isNotFound?'rgba(255,215,64,0.25)':'rgba(255,82,82,0.25)';
+      div.style.borderColor=borderColor;
+      div.innerHTML=`<div class="perm-banner-icon">${icon}</div><div>
+        <div class="perm-banner-title" style="color:${color}">${title}</div>
+        <div class="perm-banner-detail">${escHtml(r.detail||r.error||'Unknown error')}</div>
+      </div>`;
       resultsEl.appendChild(div);
-      toast(isPerm?'Permission denied':'Query error','err');
-    } else if(r.type==='select'&&r.columns&&r.columns.length){
+      toast(isNotFound?'Record not found':isPerm?'Permission denied':'Query error','err');
+    }else if(r.type==='select'&&r.columns&&r.columns.length){
       let html='<table class="results-table"><thead><tr>';
-      r.columns.forEach(c=>{ html+=`<th>${escHtml(c)}</th>`; });
+      r.columns.forEach(c=>{html+=`<th>${escHtml(c)}</th>`;});
       html+='</tr></thead><tbody>';
       r.rows.forEach(row=>{
         html+='<tr>';
-        r.columns.forEach(c=>{ const v=row[c]; html+=`<td title="${escHtml(String(v??''))}">${escHtml(String(v??'NULL'))}</td>`; });
+        r.columns.forEach(c=>{
+          const v=row[c];
+          html+=`<td title="${escHtml(String(v??''))}">${escHtml(String(v??'NULL'))}</td>`;
+        });
         html+='</tr>';
       });
       html+='</tbody></table>';
       resultsEl.insertAdjacentHTML('beforeend',html);
       totalRows+=r.rowcount;
       toast(`${r.rowcount} rows returned`,'info');
-    } else {
+    }else{
       const msg=r.message||`✓ ${r.rowcount} row(s) affected`;
       resultsEl.insertAdjacentHTML('beforeend',`<div class="sql-results-msg ok">${escHtml(msg)}</div>`);
       toast('Query executed','grant');
     }
   });
-
   footerEl.style.display='flex';
   document.getElementById('results-info').textContent=`${totalRows} row(s)`;
+  document.getElementById('results-time').textContent=`${ms}ms`;
   document.getElementById('results-user-tag').innerHTML=`<span style="color:var(--muted2)">as </span><b>${escHtml(selectedSqlUser)}</b>`;
 }
 
-// ── Privilege Matrix ─────────────────────────────────────────────────
-function getRoleColor(role){
-  return ROLE_COLORS[role] || {bg:'#0a0a14',border:'#303050',text:'#8090b0'};
-}
+// ── Privilege Matrix ──────────────────────────────────────────────────
+function getRoleColor(role){return ROLE_COLORS[role]||{bg:'#0a0a14',border:'#303050',text:'#8090b0'};}
 
 function renderPrivTable(){
   const thead=document.getElementById('priv-thead');
   const tbody=document.getElementById('priv-tbody');
   let h1=`<tr><th class="th-user" rowspan="2">USER</th><th class="th-role" rowspan="2">ROLE</th>`;
-  TABLES.forEach(t=>{ h1+=`<th class="th-group" colspan="${PRIVS.length}">${t.replace(/_/g,' ')}</th>`; });
+  TABLES.forEach(t=>{h1+=`<th class="th-group" colspan="${PRIVS.length}">${t.replace(/_/g,' ')}</th>`;});
   h1+='</tr>';
   let h2='<tr>';
-  TABLES.forEach(()=>{ PRIVS.forEach(p=>{ h2+=`<th>${p}</th>`; }); });
+  TABLES.forEach(()=>{PRIVS.forEach(p=>{h2+=`<th>${p}</th>`;});});
   h2+='</tr>';
   thead.innerHTML=h1+h2;
   tbody.innerHTML='';
-
-  if(!dbUsers.length){ tbody.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:var(--muted)">No users created yet — go to Users & Roles tab</td></tr>'; return; }
-
+  if(!dbUsers.length){tbody.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:var(--muted)">No users created yet — go to Users & Roles tab</td></tr>';return;}
   dbUsers.forEach(u=>{
     const roleName=u.roles[0]||null;
-    if(!roleName) return;
+    if(!roleName)return;
     const tr=document.createElement('tr');
     const rc=getRoleColor(roleName);
-    let cells=`
-      <td class="user-cell"><div class="user-name">${escHtml(u.username)}</div></td>
+    let cells=`<td class="user-cell"><div class="user-name">${escHtml(u.username)}</div></td>
       <td class="role-cell"><span class="role-badge" style="background:${rc.bg};border-color:${rc.border};color:${rc.text}">${escHtml(roleName)}</span></td>`;
     TABLES.forEach(table=>{
       const granted=(privData[roleName]&&privData[roleName][table])||[];
@@ -840,47 +1010,346 @@ function renderPrivTable(){
         cells+=`<td><div class="toggle-wrap"><label class="toggle"><input type="checkbox" ${checked?'checked':''} onchange="togglePriv('${roleName}','${table}','${priv}',this)"><div class="toggle-track"></div><div class="toggle-thumb"></div></label></div></td>`;
       });
     });
-    tr.innerHTML=cells;
-    tbody.appendChild(tr);
+    tr.innerHTML=cells;tbody.appendChild(tr);
   });
 }
 
 async function togglePriv(role,table,priv,cb){
-  const action=cb.checked?'GRANT':'REVOKE';
-  cb.disabled=true;
+  const action=cb.checked?'GRANT':'REVOKE';cb.disabled=true;
   try{
     const res=await fetch(`${API}/api/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,table,priv,action,admin_password:adminPassword})});
     const data=await res.json();
-    if(data.ok){
-      setLog(data.sql,action==='GRANT'?'grant':'revoke');
-      toast(`${action} ${priv} ON ${table} TO ${role}`,action==='GRANT'?'grant':'revoke');
-      await loadPrivileges();
-    } else {
-      cb.checked=!cb.checked;
-      toast('Error: '+(data.detail||'unknown'),'err');
-      setLog('ERROR: '+data.detail,'revoke');
-    }
-  } catch(e){ cb.checked=!cb.checked; toast('Connection error','err'); }
+    if(data.ok){setLog(data.sql,action==='GRANT'?'grant':'revoke');toast(`${action} ${priv} ON ${table} TO ${role}`,action==='GRANT'?'grant':'revoke');await loadPrivileges();}
+    else{cb.checked=!cb.checked;toast('Error: '+(data.detail||'unknown'),'err');setLog('ERROR: '+data.detail,'revoke');}
+  }catch(e){cb.checked=!cb.checked;toast('Connection error','err');}
   cb.disabled=false;
 }
 
-// ── Users Tab ────────────────────────────────────────────────────────
-async function loadUsersTab(){
-  await Promise.all([loadDbUsers(), loadDbRoles()]);
-  renderUsersList();
-  renderRolesList();
+// ── CRUD: Table Selector ──────────────────────────────────────────────
+function selectCrudTable(op,table,btn){
+  const panelId='op-'+op;
+  document.querySelectorAll(`#${panelId} .table-pill`).forEach(b=>{
+    b.classList.remove('active');b.textContent='○ '+b.dataset.table;
+  });
+  btn.classList.add('active');btn.textContent='● '+table;
+  if(op==='insert'){crudInsertTable=table;renderInsertForm(table);}
+  if(op==='update'){
+    crudUpdateTable=table;
+    updateFetchedRecord=null;
+    document.getElementById('update-form').style.display='none';
+    document.getElementById('update-actions').style.display='none';
+    document.getElementById('update-fetch-status').textContent='';
+    document.getElementById('update-id-input').value='';
+  }
+  if(op==='delete'){
+    crudDeleteTable=table;
+    deleteFetchedRecord=null;
+    document.getElementById('delete-preview-wrap').style.display='none';
+    document.getElementById('delete-fetch-status').textContent='';
+    document.getElementById('delete-id-input').value='';
+  }
 }
+
+// ── INSERT Form ───────────────────────────────────────────────────────
+function renderInsertForm(table){
+  const form=document.getElementById('insert-form');
+  const meta=tableMeta[table]||{};
+  let html='<div class="crud-fields-grid">';
+
+  if(table==='employees'){
+    html+=crudNumberField('ins_id','DB ID (auto)','Leave blank for auto');
+    html+=crudDatalistField('ins_emp_id','Emp ID',meta.emp_ids||[],'Type or select e.g. RM297');
+    html+=crudNumberField('ins_age','Age','e.g. 30');
+    html+=crudSelectField('ins_age_group','Age Group',meta.age_groups||[],false);
+    html+=crudSelectField('ins_attrition','Attrition',meta.attritions||['Yes','No'],false);
+    html+=crudSelectField('ins_department','Department',meta.departments||[],false);
+    html+=crudSelectField('ins_gender','Gender',meta.genders||['Male','Female'],false);
+    html+=crudSelectField('ins_job_role','Job Role',meta.job_roles||[],false);
+    html+=crudNumberField('ins_monthly_income','Monthly Income','e.g. 5000');
+    html+=crudSelectField('ins_salary_slab','Salary Slab',meta.salary_slabs||[],false);
+  }else if(table==='departments'){
+    html+=crudTextField('ins_dept_name','Department Name','e.g. Engineering');
+  }else if(table==='salary_records'){
+    html+=crudSelectField('ins_sr_emp_id','Emp ID',meta.emp_ids||[],false);
+    html+=crudNumberField('ins_sr_income','Monthly Income','e.g. 5000');
+    html+=crudSelectField('ins_sr_slab','Salary Slab',meta.salary_slabs||[],false);
+    html+=crudTextField('ins_sr_date','Recorded On (YYYY-MM-DD)','e.g. 2026-06-15');
+  }
+
+  html+='</div>';
+  form.innerHTML=html;
+  form.style.display='block';
+}
+
+// ── UPDATE ────────────────────────────────────────────────────────────
+function renderUpdateIdRow(table){}
+
+async function fetchRecordForUpdate(){
+  const id=document.getElementById('update-id-input').value.trim();
+  const statusEl=document.getElementById('update-fetch-status');
+  const formEl=document.getElementById('update-form');
+  const actionsEl=document.getElementById('update-actions');
+  if(!id){statusEl.className='crud-status err';statusEl.textContent='Enter an ID first';return;}
+  statusEl.className='crud-status';statusEl.textContent='Fetching…';
+  try{
+    const res=await fetch(`${API}/api/admin/sql`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sql:`SELECT * FROM ${crudUpdateTable} WHERE id = ${parseInt(id)} LIMIT 1;`,admin_password:adminPassword})
+    });
+    const data=await res.json();
+    const r=data.results&&data.results[0];
+    if(!r||!r.ok||!r.rows||r.rows.length===0){
+      statusEl.className='crud-status err';
+      statusEl.textContent=`❌ ID ${id} does not exist in ${crudUpdateTable}.`;
+      formEl.style.display='none';actionsEl.style.display='none';
+      updateFetchedRecord=null;return;
+    }
+    updateFetchedRecord={id:parseInt(id),table:crudUpdateTable,row:r.rows[0],cols:r.columns};
+    statusEl.className='crud-status ok';statusEl.textContent=`✓ Record found — edit fields below`;
+    renderUpdateForm(r.rows[0],r.columns);
+    formEl.style.display='block';actionsEl.style.display='flex';
+  }catch(e){statusEl.className='crud-status err';statusEl.textContent='Connection error';}
+}
+
+function renderUpdateForm(row,cols){
+  const formEl=document.getElementById('update-form');
+  const meta=tableMeta[crudUpdateTable]||{};
+  let html='<div class="crud-fields-grid">';
+  cols.forEach(col=>{
+    if(col==='id')return;
+    const val=row[col]??'';
+    html+=`<div class="crud-field">
+      <label class="crud-field-label">${escHtml(col)}</label>
+      <input class="filter-input" id="upd_${escHtml(col)}" value="${escHtml(String(val))}" placeholder="${escHtml(col)}"/>
+    </div>`;
+  });
+  html+='</div>';
+  formEl.innerHTML=html;
+}
+
+async function doUpdate(){
+  const statusEl=document.getElementById('update-status');
+  if(selectedSqlUser!=='admin'){
+    const pw=userPasswords[selectedSqlUser];
+    if(!pw){statusEl.className='crud-status err';statusEl.textContent='⚠ Authenticate First';return;}
+    const testRes=await fetch(`${API}/api/sql`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:selectedSqlUser,password:pw,
+        sql:`SELECT has_table_privilege('${selectedSqlUser}','${crudUpdateTable}','UPDATE');`})});
+    const testData=await testRes.json();
+    if(!testData.results?.[0]?.rows?.[0]?.has_table_privilege){
+      statusEl.className='crud-status err';
+      statusEl.textContent=`🔒 Permission Denied — ${selectedSqlUser} does not have UPDATE privilege on ${crudUpdateTable}`;return;}
+  }
+  if(!updateFetchedRecord){statusEl.className='crud-status err';statusEl.textContent='Fetch a record first';return;}
+  const{id,table,cols}=updateFetchedRecord;
+  const fields={};
+  cols.forEach(col=>{
+    if(col==='id')return;
+    const el=document.getElementById('upd_'+col);
+    if(el)fields[col]=el.value;
+  });
+  statusEl.className='crud-status';statusEl.textContent='Updating…';
+
+  const endpoint=`/api/${table}/update`;
+  const body={admin_password:adminPassword,performed_by:selectedSqlUser,id,...fields}; 
+  // cast numeric fields
+  if(table==='employees'){if(fields.age)body.age=parseInt(fields.age);if(fields.monthly_income)body.monthly_income=parseFloat(fields.monthly_income);}
+  if(table==='salary_records'){if(fields.monthly_income)body.monthly_income=parseFloat(fields.monthly_income);}
+
+  try{
+    const res=await fetch(`${API}${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await res.json();
+    if(d.ok){
+      statusEl.className='crud-status ok';statusEl.textContent=d.message;
+      toast(d.message,'grant');
+      tableMeta={};// invalidate cache
+    }else{
+      statusEl.className='crud-status err';
+      statusEl.textContent=d.error;
+      if(d.type==='not_found')toast(`ID ${id} not found`,'err');
+      else toast('Update failed','err');
+    }
+  }catch(e){statusEl.className='crud-status err';statusEl.textContent='Connection error';}
+}
+
+// ── DELETE ────────────────────────────────────────────────────────────
+async function fetchRecordForDelete(){
+  const id=document.getElementById('delete-id-input').value.trim();
+  const statusEl=document.getElementById('delete-fetch-status');
+  const previewWrap=document.getElementById('delete-preview-wrap');
+  if(!id){statusEl.className='crud-status err';statusEl.textContent='Enter an ID first';return;}
+  statusEl.className='crud-status';statusEl.textContent='Fetching…';
+  try{
+    const res=await fetch(`${API}/api/admin/sql`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sql:`SELECT * FROM ${crudDeleteTable} WHERE id = ${parseInt(id)} LIMIT 1;`,admin_password:adminPassword})
+    });
+    const data=await res.json();
+    const r=data.results&&data.results[0];
+    if(!r||!r.ok||!r.rows||r.rows.length===0){
+      statusEl.className='crud-status err';
+      statusEl.textContent=`❌ ID ${id} does not exist in ${crudDeleteTable}.`;
+      previewWrap.style.display='none';
+      deleteFetchedRecord=null;return;
+    }
+    deleteFetchedRecord={id:parseInt(id),table:crudDeleteTable,row:r.rows[0],cols:r.columns};
+    statusEl.className='crud-status ok';statusEl.textContent=`✓ Record found — review below`;
+    renderDeletePreview(r.rows[0],r.columns);
+    previewWrap.style.display='block';
+    document.getElementById('delete-status').textContent='';
+  }catch(e){statusEl.className='crud-status err';statusEl.textContent='Connection error';}
+}
+
+function renderDeletePreview(row,cols){
+  const card=document.getElementById('delete-preview-card');
+  let html='<div class="delete-preview-title">⚠️ Record to be deleted:</div><div class="delete-preview-fields">';
+  cols.forEach(col=>{
+    const v=row[col]??'NULL';
+    html+=`<div class="delete-preview-field"><span class="delete-preview-key">${escHtml(col)}</span><span class="delete-preview-val">${escHtml(String(v))}</span></div>`;
+  });
+  html+='</div>';
+  card.innerHTML=html;
+}
+
+async function doDelete(){
+  const statusEl=document.getElementById('delete-status');
+  if(selectedSqlUser!=='admin'){
+    const pw=userPasswords[selectedSqlUser];
+    if(!pw){statusEl.className='crud-status err';statusEl.textContent='⚠ Authenticate First';return;}
+    const testRes=await fetch(`${API}/api/sql`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:selectedSqlUser,password:pw,
+        sql:`SELECT has_table_privilege('${selectedSqlUser}','${crudDeleteTable}','DELETE');`})});
+    const testData=await testRes.json();
+    if(!testData.results?.[0]?.rows?.[0]?.has_table_privilege){
+      statusEl.className='crud-status err';
+      statusEl.textContent=`🔒 Permission Denied — ${selectedSqlUser} doesnot have DELETE privilege on ${crudDeleteTable}`;return;}
+  }
+  if(!deleteFetchedRecord){statusEl.className='crud-status err';statusEl.textContent='Preview a record first';return;}
+  const{id,table}=deleteFetchedRecord;
+  statusEl.className='crud-status';statusEl.textContent='Deleting…';
+  try{
+    const res=await fetch(`${API}/api/${table}/delete`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({admin_password:adminPassword,performed_by:selectedSqlUser,id})
+    });
+    const d=await res.json();
+    if(d.ok){
+      statusEl.className='crud-status ok';statusEl.textContent=d.message;
+      toast(d.message,'revoke');
+      document.getElementById('delete-preview-wrap').style.display='none';
+      document.getElementById('delete-fetch-status').textContent='';
+      document.getElementById('delete-id-input').value='';
+      deleteFetchedRecord=null;
+      tableMeta={};// invalidate cache
+    }else{
+      statusEl.className='crud-status err';
+      statusEl.textContent=d.error;
+      if(d.type==='not_found')toast(`ID ${id} not found`,'err');
+      else toast('Delete failed','err');
+    }
+  }catch(e){statusEl.className='crud-status err';statusEl.textContent='Connection error';}
+}
+async function doInsert(){
+  const statusEl=document.getElementById('insert-status');
+  const table=crudInsertTable;
+
+  if(selectedSqlUser!=='admin'){
+    const pw=userPasswords[selectedSqlUser];
+    if(!pw){
+      statusEl.className='crud-status err';
+      statusEl.textContent='⚠ Authenticate First';
+      return;
+    }
+    const testRes=await fetch(`${API}/api/sql`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:selectedSqlUser,password:pw,
+        sql:`SELECT has_table_privilege('${selectedSqlUser}','"${table}"','INSERT');`})
+    });
+    const testData=await testRes.json();
+    const allowed=testData.results?.[0]?.rows?.[0]?.has_table_privilege;
+    if(!allowed){
+      statusEl.className='crud-status err';
+      statusEl.textContent=`🔒 Permission Denied — ${selectedSqlUser} does not have INSERT privilege on ${table}`;
+      return;
+    }
+  }
+
+  statusEl.className='crud-status';statusEl.textContent='Inserting…';
+  let body={admin_password:adminPassword, performed_by:selectedSqlUser};
+  let endpoint='';
+  try{
+    if(table==='employees'){
+      endpoint='/api/employees/insert';
+      const ins_id=v('ins_id');
+      if(ins_id) body.id=parseInt(ins_id);
+      body.emp_id=v('ins_emp_id');
+      body.age=parseInt(v('ins_age'));
+      body.age_group=v('ins_age_group');
+      body.attrition=v('ins_attrition');
+      body.department=v('ins_department');
+      body.gender=v('ins_gender');
+      body.job_role=v('ins_job_role');
+      body.monthly_income=parseFloat(v('ins_monthly_income'));
+      body.salary_slab=v('ins_salary_slab');
+    }else if(table==='departments'){
+      endpoint='/api/departments/insert';
+      body.dept_name=v('ins_dept_name');
+    }else if(table==='salary_records'){
+      endpoint='/api/salary_records/insert';
+      body.emp_id=v('ins_sr_emp_id');
+      body.monthly_income=parseFloat(v('ins_sr_income'));
+      body.salary_slab=v('ins_sr_slab');
+      body.recorded_on=v('ins_sr_date');
+    }
+    const res=await fetch(`${API}${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await res.json();
+    if(d.ok){
+      statusEl.className='crud-status ok';statusEl.textContent=d.message;
+      toast(d.message,'grant');
+      tableMeta={};// invalidate meta cache so dropdowns reload
+      renderInsertForm(table);
+    }else{
+      statusEl.className='crud-status err';statusEl.textContent=d.error;toast('Insert failed','err');
+    }
+  }catch(e){statusEl.className='crud-status err';statusEl.textContent='Connection error';}
+}
+
+function v(id){const el=document.getElementById(id);return el?el.value:'';}
+
+// ── CRUD Field Helpers ────────────────────────────────────────────────
+function crudTextField(id,label,placeholder){
+  return `<div class="crud-field">
+    <label class="crud-field-label">${escHtml(label)}</label>
+    <input class="filter-input" id="${id}" placeholder="${escHtml(placeholder)}"/>
+  </div>`;
+}
+function crudNumberField(id,label,placeholder){
+  return `<div class="crud-field">
+    <label class="crud-field-label">${escHtml(label)}</label>
+    <input class="filter-input" id="${id}" type="number" placeholder="${escHtml(placeholder)}"/>
+  </div>`;
+}
+function crudSelectField(id,label,options,allowEmpty){
+  const opts=(allowEmpty?['']:[]
+    ).concat(options).map(o=>`<option value="${escHtml(String(o))}">${escHtml(String(o))}</option>`).join('');
+  return `<div class="crud-field">
+    <label class="crud-field-label">${escHtml(label)}</label>
+    <select class="filter-input" id="${id}">${opts}</select>
+  </div>`;
+}
+
+// ── Users Tab ─────────────────────────────────────────────────────────
+async function loadUsersTab(){await Promise.all([loadDbUsers(),loadDbRoles()]);renderUsersList();renderRolesList();}
 
 function renderUsersList(){
   const list=document.getElementById('users-list');
-  if(!dbUsers.length){ list.innerHTML='<div class="no-users">No users yet. Create one →</div>'; return; }
+  if(!dbUsers.length){list.innerHTML='<div class="no-users">No users yet. Create one →</div>';return;}
   list.innerHTML='';
   dbUsers.forEach(u=>{
-    const div=document.createElement('div'); div.className='user-row';
+    const div=document.createElement('div');div.className='user-row';
     const roleLabel=u.roles.length?u.roles.join(', '):'No role';
     const rc=u.roles[0]?getRoleColor(u.roles[0]):{bg:'#0a0a14',border:'#303050',text:'#8090b0'};
-    div.innerHTML=`
-      <div class="user-avatar">👤</div>
+    div.innerHTML=`<div class="user-avatar">👤</div>
       <div class="user-info">
         <div class="user-info-name">${escHtml(u.username)}</div>
         <div class="user-info-role"><span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:9px;font-weight:600;background:${rc.bg};border:1px solid ${rc.border};color:${rc.text};font-family:'JetBrains Mono',monospace">${escHtml(roleLabel)}</span></div>
@@ -891,7 +1360,7 @@ function renderUsersList(){
 }
 
 function renderRolesList(){
-  const tbody=document.getElementById('roles-tbody'); tbody.innerHTML='';
+  const tbody=document.getElementById('roles-tbody');tbody.innerHTML='';
   dbRoles.forEach(role=>{
     const info=ROLE_DESCRIPTIONS[role]||{label:role,perms:'Custom role'};
     const rc=getRoleColor(role);
@@ -907,35 +1376,21 @@ async function createUser(){
   const role=document.getElementById('new-role').value;
   const apw=document.getElementById('new-admin-pw').value;
   const status=document.getElementById('create-user-status');
-
-  if(!username||!password||!role||!apw){ status.className='modal-status err'; status.textContent='Fill all fields'; return; }
-
-  if(apw !== CORRECT_ADMIN_PASSWORD){
-    status.className='modal-status err'; status.textContent='Wrong admin password';
-    return;
-  }
-
-  status.className='modal-status'; status.textContent='Creating…';
+  if(!username||!password||!role||!apw){status.className='modal-status err';status.textContent='Fill all fields';return;}
+  if(apw!==CORRECT_ADMIN_PASSWORD){status.className='modal-status err';status.textContent='Wrong admin password';return;}
+  status.className='modal-status';status.textContent='Creating…';
   try{
     const res=await fetch(`${API}/api/users/create`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password,role,admin_password:apw})});
     const d=await res.json();
     if(d.ok){
-      status.className='modal-status ok'; status.textContent=d.message;
+      status.className='modal-status ok';status.textContent=d.message;
       toast('User created: '+username,'grant');
       document.getElementById('new-username').value='';
       document.getElementById('new-password').value='';
       document.getElementById('new-admin-pw').value='';
-      await loadUsersTab();
-      rebuildUserButtons();
-      renderPrivTable();
-    } else {
-      status.className='modal-status err'; status.textContent=d.error;
-      toast('Error: '+d.error,'err');
-    }
-  } catch(e){
-    status.className='modal-status err'; status.textContent='Connection error';
-    toast('Connection error','err');
-  }
+      await loadUsersTab();rebuildUserButtons();renderPrivTable();
+    }else{status.className='modal-status err';status.textContent=d.error;toast('Error: '+d.error,'err');}
+  }catch(e){status.className='modal-status err';status.textContent='Connection error';toast('Connection error','err');}
 }
 
 function askDelete(username){
@@ -948,105 +1403,101 @@ function askDelete(username){
   document.getElementById('del-modal').style.display='flex';
   setTimeout(()=>document.getElementById('del-modal-pw').focus(),50);
 }
-function closeDelModal(){ document.getElementById('del-modal').style.display='none'; deleteTarget=null; }
+function closeDelModal(){document.getElementById('del-modal').style.display='none';deleteTarget=null;}
 
 async function confirmDelete(){
   const apw=document.getElementById('del-modal-pw').value;
-  if(!apw){ document.getElementById('del-modal-status').className='modal-status err'; document.getElementById('del-modal-status').textContent='Enter admin password'; return; }
-
-  if(apw !== CORRECT_ADMIN_PASSWORD){
-    document.getElementById('del-modal-status').className='modal-status err';
-    document.getElementById('del-modal-status').textContent='Wrong admin password. Access denied.';
-    return;
-  }
-
-  document.getElementById('del-modal-status').className='modal-status'; document.getElementById('del-modal-status').textContent='Deleting…';
+  if(!apw){document.getElementById('del-modal-status').className='modal-status err';document.getElementById('del-modal-status').textContent='Enter admin password';return;}
+  if(apw!==CORRECT_ADMIN_PASSWORD){document.getElementById('del-modal-status').className='modal-status err';document.getElementById('del-modal-status').textContent='Wrong admin password. Access denied.';return;}
+  document.getElementById('del-modal-status').className='modal-status';document.getElementById('del-modal-status').textContent='Deleting…';
   try{
     const res=await fetch(`${API}/api/users/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:deleteTarget,admin_password:apw})});
     const d=await res.json();
     if(d.ok){
-      closeDelModal();
-      toast('User deleted: '+deleteTarget,'revoke');
+      closeDelModal();toast('User deleted: '+deleteTarget,'revoke');
       delete userPasswords[deleteTarget];
-      if(selectedSqlUser===deleteTarget){ selectedSqlUser='admin'; }
-      await loadUsersTab();
-      rebuildUserButtons();
-      renderPrivTable();
-    } else {
-      document.getElementById('del-modal-status').className='modal-status err';
-      document.getElementById('del-modal-status').textContent=d.error;
-    }
-  } catch(e){
-    document.getElementById('del-modal-status').className='modal-status err';
-    document.getElementById('del-modal-status').textContent='Connection error';
-  }
+      if(selectedSqlUser===deleteTarget)selectedSqlUser='admin';
+      await loadUsersTab();rebuildUserButtons();renderPrivTable();
+    }else{document.getElementById('del-modal-status').className='modal-status err';document.getElementById('del-modal-status').textContent=d.error;}
+  }catch(e){document.getElementById('del-modal-status').className='modal-status err';document.getElementById('del-modal-status').textContent='Connection error';}
 }
-document.getElementById('del-modal-pw').addEventListener('keydown',e=>{ if(e.key==='Enter') confirmDelete(); });
+document.getElementById('del-modal-pw').addEventListener('keydown',e=>{if(e.key==='Enter')confirmDelete();});
 
-// ── Audit Log ────────────────────────────────────────────────────────
+// ── Audit Log ─────────────────────────────────────────────────────────
 async function loadAudit(){
   document.getElementById('audit-empty').textContent='Loading…';
   document.getElementById('audit-empty').style.display='block';
   document.getElementById('audit-tbody').innerHTML='';
   try{
-    const res=await fetch(`${API}/api/audit`); const rows=await res.json();
+    const res=await fetch(`${API}/api/audit`);const rows=await res.json();
     const tbody=document.getElementById('audit-tbody');
-    if(!rows.length){ document.getElementById('audit-empty').textContent='No audit entries yet.'; return; }
+    if(!rows.length){
+      document.getElementById('audit-empty').textContent='No non-admin activity recorded yet.';
+      return;
+    }
     document.getElementById('audit-empty').style.display='none';
+    const ACTION_COLOR={
+      SELECT:'var(--blue)',INSERT:'var(--green)',UPDATE:'var(--yellow)',DELETE:'var(--red)'
+    };
     rows.forEach(r=>{
       const tr=document.createElement('tr');
-      const ts=r.ts?new Date(r.ts).toLocaleString():'—';
+      const d=r.ts?new Date(r.ts):null;
+      const datePart=d?d.toLocaleDateString('en-PK',{day:'2-digit',month:'short',year:'numeric'}):'—';
+      const timePart=d?d.toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}):'';
       const action=r.action||'—';
+      const color=ACTION_COLOR[action]||'var(--muted)';
       tr.innerHTML=`
-        <td style="color:var(--muted)">${escHtml(ts)}</td>
-        <td style="color:var(--blue)">${escHtml(r.username||'—')}</td>
-        <td><span class="audit-action ${action}">${escHtml(action)}</span></td>
-        <td style="color:var(--yellow)">${escHtml(r.table_name||'—')}</td>
-        <td style="color:var(--muted2);max-width:300px;overflow:hidden;text-overflow:ellipsis">${escHtml(r.detail||'—')}</td>`;
+        <td style="white-space:nowrap">
+          <div style="color:var(--text);font-size:12px">${escHtml(datePart)}</div>
+          <div style="color:var(--muted);font-size:11px;font-family:'JetBrains Mono',monospace">${escHtml(timePart)}</div>
+        </td>
+        <td>
+          <span style="display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:20px;background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.3);color:var(--blue);font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace">
+            👤 ${escHtml(r.username||'—')}
+          </span>
+        </td>
+        <td>
+          <span style="display:inline-block;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${color};background:${color}18;border:1px solid ${color}40">
+            ${escHtml(action)}
+          </span>
+        </td>
+        <td style="color:var(--yellow);font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(r.table_name||'—')}</td>
+        <td style="color:var(--muted2);font-size:11px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.detail||'')}">${escHtml(r.detail||'—')}</td>`;
       tbody.appendChild(tr);
     });
-  } catch(e){
-    document.getElementById('audit-empty').textContent='Error loading audit log.';
-  }
+  }catch(e){document.getElementById('audit-empty').textContent='Error loading audit log.';}
 }
-
-// ── Init ─────────────────────────────────────────────────────────────
-window.addEventListener('load', async () => {
-  const isRefresh = sessionStorage.getItem('hr_session_alive');
-
-  if (!isRefresh) {
-    localStorage.removeItem('hr_admin_pw');
-    localStorage.removeItem('hr_active_tab');
-    loading(false);
-    return;
-  }
-
-  const savedPw = localStorage.getItem('hr_admin_pw');
-  const savedTab = localStorage.getItem('hr_active_tab') || 'dashboard';
-
-  if (savedPw && savedPw === CORRECT_ADMIN_PASSWORD) {
-    try {
-      const res = await fetch(`${API}/api/health`, { signal: AbortSignal.timeout(2000) });
-      const d = await res.json();
-      if (d.status === 'ok') {
-        adminPassword = savedPw;
-        document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('app').style.display = 'block';
-        loading(true, 'Restoring session…');
+// ── Init ──────────────────────────────────────────────────────────────
+window.addEventListener('load',async()=>{
+  const isRefresh=sessionStorage.getItem('hr_session_alive');
+  if(!isRefresh){localStorage.removeItem('hr_admin_pw');localStorage.removeItem('hr_active_tab');loading(false);return;}
+  const savedPw=localStorage.getItem('hr_admin_pw');
+  const savedTab=localStorage.getItem('hr_active_tab')||'dashboard';
+  if(savedPw&&savedPw===CORRECT_ADMIN_PASSWORD){
+    try{
+      const res=await fetch(`${API}/api/health`,{signal:AbortSignal.timeout(2000)});
+      const d=await res.json();
+      if(d.status==='ok'){
+        adminPassword=savedPw;
+        document.getElementById('login-screen').style.display='none';
+        document.getElementById('app').style.display='block';
+        loading(true,'Restoring session…');
         await refreshAll();
         loading(false);
-        updateQuickBtnsVisibility();
-
-        const tabBtn = [...document.querySelectorAll('.tab-btn')]
-          .find(b => b.getAttribute('onclick')?.includes(`'${savedTab}'`));
-        if (tabBtn) switchTab(savedTab, tabBtn);
+        const tabBtn=[...document.querySelectorAll('.tab-btn')].find(b=>b.getAttribute('onclick')?.includes(`'${savedTab}'`));
+        if(tabBtn)switchTab(savedTab,tabBtn);
+        if(savedTab==='sql')await restoreFilterState();
         return;
       }
-    } catch (e) { /* show login */ }
+    }catch(e){}
   }
-
   loading(false);
 });
+
+// Init filter on load
+(async()=>{
+  await initTableMeta('employees');
+})();
 </script>
 </body>
 </html>
