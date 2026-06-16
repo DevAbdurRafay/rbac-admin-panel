@@ -479,26 +479,52 @@ function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').
 
 function updateAuditTabState(){
   const auditBtn=document.getElementById('audit-tab-btn');
-  if(!auditBtn)return;
+  // Sabhi tab buttons mein se woh button dhoondna jiska click event 'users' ke liye hai
+  const usersBtn=[...document.querySelectorAll('.tab-btn')].find(b=>b.getAttribute('onclick')?.includes("'users'"));
+  
+  if(!auditBtn) return;
+
   if(selectedSqlUser==='admin'){
+    // Admin ke liye dono tabs open rahenge
     auditBtn.disabled=false;
     auditBtn.style.opacity='1';
     auditBtn.style.cursor='pointer';
     auditBtn.title='';
+
+    if(usersBtn) {
+      usersBtn.disabled=false;
+      usersBtn.style.opacity='1';
+      usersBtn.style.cursor='pointer';
+      usersBtn.title='';
+    }
   }else{
+    // Non-admin users ke liye dono tabs disable aur lock ho jayenge
     auditBtn.disabled=true;
     auditBtn.style.opacity='0.35';
     auditBtn.style.cursor='not-allowed';
     auditBtn.title='Only admin can view Audit Log';
-    // agar audit tab active hai aur user switch hua toh dashboard pe wapas
-    if(activeTabName==='audit'){
+
+    if(usersBtn) {
+      usersBtn.disabled=true;
+      usersBtn.style.opacity='0.35';
+      usersBtn.style.cursor='not-allowed';
+      usersBtn.title='Only admin can manage Users & Roles';
+    }
+
+    // Agar non-admin user galti se pehle se in tabs par baitha hai, toh use Dashboard par shift kar do
+    if(activeTabName==='audit' || activeTabName==='users'){
       const dashBtn=document.querySelector('.tab-btn[onclick*="dashboard"]');
-      if(dashBtn)switchTab('dashboard',dashBtn);
+      if(dashBtn) switchTab('dashboard',dashBtn);
     }
   }
 }
 
 function switchTab(name,btn){// ── Tab switching ─────────────────────────────────────────────────────
+  // Naya Safe Guard: Agar user admin nahi hai aur 'audit' ya 'users' tab par click karega toh block ho jayega
+  if((name === 'audit' || name === 'users') && selectedSqlUser !== 'admin'){
+    toast('Access Denied: Only admin allowed!', 'err');
+    return;
+  }
 
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));

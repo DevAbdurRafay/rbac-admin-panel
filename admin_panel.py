@@ -20,9 +20,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def _clean_url(url: str) -> str:
     return re.sub(r'^postgresql\+[^:]+://', 'postgresql://', url)
 
-def admin_conn():
-    return psycopg2.connect(_clean_url(DATABASE_URL))
-
 def _parse_dsn(url: str) -> dict:
     url = _clean_url(url)
     url = re.sub(r'^postgres(?:ql)?://', '', url)
@@ -33,6 +30,7 @@ def _parse_dsn(url: str) -> dict:
             if '=' in part:
                 k, v = part.split('=', 1)
                 params[k] = v
+    # Fixed regex to allow dots (.) in the username for Supabase Pooler strings
     m = re.match(r'(?:([^:@]*)(?::([^@]*))?@)?([^/:]+)(?::(\d+))?(?:/(.*))?$', url)
     if not m:
         raise ValueError("Cannot parse DATABASE_URL")
@@ -43,13 +41,25 @@ def _parse_dsn(url: str) -> dict:
     if port:     dsn["port"]     = int(port)
     return dsn
 
+def admin_conn():
+    dsn = _parse_dsn(DATABASE_URL)
+    dsn["connect_timeout"] = 15
+    return psycopg2.connect(**dsn)
+
 def get_admin_password() -> str:
     return _parse_dsn(DATABASE_URL).get("password", "")
 
 def user_conn(username: str, password: str):
     dsn = _parse_dsn(DATABASE_URL)
-    dsn["user"]     = username
+    main_user = dsn.get("user", "postgres")
+    # Appending supabase project ID reference for dynamically created users over connection pooler
+    if "." in main_user:
+        proj_id = main_user.split(".", 1)[1]
+        dsn["user"] = f"{username}.{proj_id}"
+    else:
+        dsn["user"] = username
     dsn["password"] = password
+    dsn["connect_timeout"] = 15
     return psycopg2.connect(**dsn)
 
 # ── Pydantic Models ─────────────────────────────────────────────────
@@ -147,14 +157,6 @@ class UpdateDeptReq(BaseModel):
 
 class DeleteDeptReq(BaseModel):
     admin_password: str
-    performed_by: Optional[str] = "admin"
-    id: int
-    admin_password: str
-    id: int
-    dept_name: Optional[str] = None
-
-class DeleteDeptReq(BaseModel):
-    admin_password: str
     id: int
 
 # ── HTML Serve ──────────────────────────────────────────────────────
@@ -193,20 +195,15 @@ def stats():
     finally:
         cur.close(); conn.close()
 
-# ── Table Meta — dynamic dropdown values ────────────────────────────
+# ── Table Meta ──────────────────────────────────────────────────────
 @app.get("/api/table-meta/{table}")
 def table_meta(table: str):
-    """
-    Returns actual distinct values from DB for filter dropdowns.
-    Also returns column list for the SELECT column picker.
-    """
     allowed = {"employees", "departments", "salary_records"}
     if table not in allowed:
         raise HTTPException(400, "Invalid table")
     conn = admin_conn(); cur = conn.cursor()
     try:
         meta = {}
-
         if table == "employees":
             meta["columns"] = ["id","emp_id","age","age_group","attrition","department",
                                 "gender","job_role","monthly_income","salary_slab"]
@@ -374,7 +371,6 @@ def verify_user(req: VerifyReq):
 
 # ── Helpers ──────────────────────────────────────────────────────────
 def _manual_audit(conn_ignored, username: str, action: str, table: str, detail: str):
-    """Always uses a fresh admin connection so audit is never lost on rollback."""
     try:
         ac = admin_conn()
         c  = ac.cursor()
@@ -421,7 +417,6 @@ def user_sql(req: UserSqlReq):
     init_cur.close()
 
     SKIP_AUDIT_PATTERNS = ("has_table_privilege", "set_config", "pg_")
-
     stmts = [s.strip() for s in req.sql.split(";") if s.strip()]
     results = []
 
@@ -541,7 +536,6 @@ def admin_sql(req: AdminSqlReq):
             cur.close()
     conn.close()
     return {"results": results}
-    # NOTE: admin SQL intentionally has NO audit logging
 
 # ── CRUD: Employees ──────────────────────────────────────────────────
 @app.post("/api/employees/insert")
@@ -792,7 +786,6 @@ def delete_dept(req: DeleteDeptReq):
 def audit_log():
     conn = admin_conn()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    # Sirf Supabase internal system users exclude karo — "admin" ko mat rokna
     dsn_user = _parse_dsn(DATABASE_URL).get("user", "postgres")
     excluded = (
         dsn_user, "postgres", "supabase_admin", "authenticator",
@@ -818,4 +811,4 @@ def audit_log():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("admin_panel:app", host="0.0.0.0", port=8000, reload=True)
